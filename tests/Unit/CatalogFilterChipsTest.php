@@ -15,6 +15,14 @@ class CatalogFilterChipsTest extends TestCase
         $this->assertNull(CatalogFilterChips::priceLabel('', ''));
     }
 
+    public function test_score_chip_shows_the_filter_values(): void
+    {
+        $this->assertSame('DA 30+', CatalogFilterChips::scoreLabel('DA', 30, null));
+        $this->assertSame('DR 20–50', CatalogFilterChips::scoreLabel('DR', 20, 50));
+        $this->assertSame('DA ≤ 60', CatalogFilterChips::scoreLabel('DA', null, 60));
+        $this->assertSame('DA', CatalogFilterChips::scoreLabel('DA', '', ''));
+    }
+
     public function test_language_chip_uses_names_for_multi_select(): void
     {
         $names = ['en' => 'English', 'de' => 'German'];

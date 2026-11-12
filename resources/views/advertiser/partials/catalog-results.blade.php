@@ -131,11 +131,19 @@
                  data-current-page="{{ (int) ($resultCurrentPage ?? 1) }}"
                  data-last-page="{{ (int) ($resultLastPage ?? 1) }}"
                  data-inventory-from="{{ $inventoryFrom !== null ? e(number_format((float) $inventoryFrom, 2, '.', '')) : '' }}"
+                 data-tab-count-guest="{{ (int) (($catalogTabCounts['guest_post'] ?? 0)) }}"
+                 data-tab-count-li="{{ (int) (($catalogTabCounts['link_insertion'] ?? 0)) }}"
                  data-status-text="{{ $catalogResultsStatus['text'] }}"
                  data-status-announce="{{ $catalogResultsStatus['announce'] }}">
                 <div class="catalog-results-busy" hidden aria-hidden="true">
                     <span class="catalog-results-busy__dot" aria-hidden="true"></span>
                     <span class="catalog-results-busy__label">Updating results…</span>
+                    <div class="catalog-skeleton" aria-hidden="true">
+                        <div class="catalog-skeleton__row"></div>
+                        <div class="catalog-skeleton__row"></div>
+                        <div class="catalog-skeleton__row"></div>
+                        <div class="catalog-skeleton__row"></div>
+                    </div>
                 </div>
                 <div class="card-body p-0">
                     
@@ -253,6 +261,7 @@
                 $viewPrices = $site->catalogPricesForViewer(auth()->user());
                 $isOwnedByMe = ! empty($viewPrices['owned']);
                 $catalogListPrice = (float) $viewPrices['list'];
+                $guestPostListPrice = $catalogListPrice;
                 $catalogPublisherPrice = (float) $viewPrices['publisher'];
                 $catalogSalePctNominal = $viewPrices['sale_percent_nominal'];
                 $catalogSalePct = $catalogSalePctNominal; // nominal for data-* / JS
@@ -313,33 +322,55 @@
                 $expandZoomUrl = $expandZoomPaths[0] ?? $previewUrl;
                 $tileFaviconUrl = $showsIdentity ? $site->catalogTileFaviconUrl() : null;
                 $tileFaviconChain = $tileFaviconUrl ? [$tileFaviconUrl] : [];
+                $compareCategory = $site->nicheBadgeLabels()[0] ?? '';
+                $compareCountry = '';
+                try {
+                    $compareCountry = fullCountry($site->primaryCountryCode());
+                } catch (\Throwable $e) {
+                    report($e);
+                }
             @endphp
             <tr class="site-row {{ $isBlacklisted ? 'blacklisted-row' : '' }}{{ ! empty($catalogReported) && in_array((int) $site->id, $catalogReported, true) ? ' is-catalog-reported' : '' }}"
                 data-id="{{ $site->id }}"
                 data-name="{{ $displayName }}"
                 data-publisher-id="{{ (int) $site->publisher_id }}"
+                data-compare-name="{{ $displayName }}"
+                data-compare-category="{{ $compareCategory }}"
+                data-compare-traffic="{{ is_numeric($site->traffic) ? number_format((float) $site->traffic) : '' }}"
+                data-compare-dr="{{ is_numeric($site->dr) ? (int) $site->dr : '' }}"
+                data-compare-da="{{ is_numeric($site->da) ? (int) $site->da : '' }}"
+                data-compare-country="{{ $compareCountry }}"
+                data-compare-gp-price="{{ $guestPostListPrice > 0 ? format_money($guestPostListPrice) : '' }}"
+                data-compare-li-price="{{ ($offersLinkInsertion && $linkInsertionListPrice > 0) ? format_money($linkInsertionListPrice) : '' }}"
+                data-compare-link-type="{{ $isLinkInsertionCatalog ? ($site->linkInsertionLinkTypeLabel() ?: '') : ($site->linkTypeLabel() ?: '') }}"
+                data-compare-delivery="{{ $isLinkInsertionCatalog ? ($site->linkInsertionDeliveryLabel() ?: '') : ($site->turnaroundLabel() ?: '') }}"
+                data-compare-publication="{{ $isLinkInsertionCatalog ? '' : ($site->publicationDurationLabel() ?: '') }}"
                 @if((int) ($site->getAttribute('owner_id') ?? 0) > 0) data-owner-id="{{ (int) $site->getAttribute('owner_id') }}" @endif
                 @if($isOwnedByMe) data-own-listing="1" @endif>
                 <td class="catalog-site-cell">
-                    @include('advertiser.partials.catalog-new-ribbon', ['isNew' => $isNew])
+                    <div class="catalog-site-row">
+                    @include('advertiser.partials.catalog-row-select')
 
                     <div class="catalog-site-stack catalog-site-stack--tiled">
-                        @include('advertiser.partials.catalog-site-tile', [
-                            'label' => $displayHost,
-                            'alt' => $displayName !== '' ? $displayName : $displayHost,
-                            'size' => 'md',
-                            'faviconUrl' => $tileFaviconUrl,
-                            'faviconChain' => $tileFaviconChain,
-                            'masked' => ! $showsIdentity,
-                            'openDetailsId' => (string) $site->id,
-                        ])
+                        <div class="catalog-tile-wrap">
+                            @include('advertiser.partials.catalog-new-ribbon', ['isNew' => $isNew])
+                            @include('advertiser.partials.catalog-site-tile', [
+                                'label' => $displayHost,
+                                'alt' => $displayName !== '' ? $displayName : $displayHost,
+                                'size' => 'md',
+                                'faviconUrl' => $tileFaviconUrl,
+                                'faviconChain' => $tileFaviconChain,
+                                'masked' => ! $showsIdentity,
+                                'openDetailsId' => (string) $site->id,
+                            ])
+                        </div>
 
                         <div class="catalog-site-stack__body">
                         <!-- Name + Verified + Details stay on one nowrap row.
                              NEW is the corner ribbon. Listing tags and visit live
                              on the wrapping identity row with the rooted URL. -->
                         <div class="catalog-site-title-row">
-                            <span class="text-dark catalog-site-name catalog-site-name--concat"
+                            <span class="catalog-site-name catalog-site-name--concat"
                                   data-site-name-label
                                   title="{{ $displayName }}">
                                 {{ $displayName }}
@@ -477,8 +508,10 @@
 
                         @include('advertiser.partials.catalog-meta-chips', [
                             'site' => $site,
+                            'isLinkInsertionCatalog' => $isLinkInsertionCatalog,
                         ])
                         </div>
+                    </div>
                     </div>
                 </td>
 
@@ -570,17 +603,6 @@
 
                 <td class="text-center catalog-stat-cell catalog-td-action">
                     <div class="catalog-row-actions">
-                        @include('advertiser.partials.catalog-price', [
-                            'listPrice' => $catalogListPrice,
-                            'salePrice' => $catalogSalePrice,
-                            'salePercent' => $catalogSalePctDisplay,
-                            'align' => 'center',
-                            'bulkLabel' => $catalogDeals['bulk_note'] ?? null,
-                            'showFrom' => ! empty($catalogDeals['has_paid_addons']),
-                            'siteId' => $site->id,
-                            'featured' => $site->isFeatured(),
-                        ])
-
                         @include('advertiser.partials.catalog-site-buy', ['align' => 'center'])
 
                         <div class="catalog-row-actions__secondary">
@@ -589,20 +611,28 @@
                                         class="btn-icon-quiet favorite-btn {{ $isFavorited ? 'is-active' : '' }}"
                                         data-id="{{ $site->id }}"
                                         data-name="{{ $displayName }}"
+                                        data-glass-tip
+                                        data-glass-tip-title="{{ $isFavorited ? __('messages.catalog_unsave_site') : __('messages.catalog_save_site') }}"
+                                        data-glass-tip-body="{{ $isFavorited ? __('messages.catalog_unsave_site_tip') : __('messages.catalog_save_site_tip') }}"
                                         data-glass-tip-placement="left"
-                                        aria-label="{{ $isFavorited ? 'Remove from favorites' : 'Add to favorites' }}"
-                                        title="{{ $isFavorited ? 'Remove from Favorites' : 'Add to Favorites' }}">
+                                        aria-label="{{ $isFavorited ? __('messages.catalog_unsave_site') : __('messages.catalog_save_site') }}"
+                                        title="{{ $isFavorited ? __('messages.catalog_unsave_site') : __('messages.catalog_save_site') }}">
                                     <i class="fa-{{ $isFavorited ? 'solid' : 'regular' }} fa-heart" aria-hidden="true"></i>
+                                    <span class="catalog-row-action-label">{{ $isFavorited ? __('messages.catalog_saved_action') : __('messages.catalog_save_action') }}</span>
                                 </button>
 
                                 <button type="button"
                                         class="btn-icon-quiet blacklist-btn {{ $isBlacklisted ? 'is-active' : '' }}"
                                         data-id="{{ $site->id }}"
                                         data-name="{{ $displayName }}"
+                                        data-glass-tip
+                                        data-glass-tip-title="{{ $isBlacklisted ? __('messages.catalog_unhide_site') : __('messages.catalog_hide_site') }}"
+                                        data-glass-tip-body="{{ $isBlacklisted ? __('messages.catalog_unhide_site_tip') : __('messages.catalog_hide_site_tip') }}"
                                         data-glass-tip-placement="left"
-                                        aria-label="{{ $isBlacklisted ? 'Remove from blacklist' : 'Blacklist site' }}"
-                                        title="{{ $isBlacklisted ? 'Remove from Blacklist' : 'Blacklist Site' }}">
+                                        aria-label="{{ $isBlacklisted ? __('messages.catalog_unhide_site') : __('messages.catalog_hide_site') }}"
+                                        title="{{ $isBlacklisted ? __('messages.catalog_unhide_site') : __('messages.catalog_hide_site') }}">
                                     <i class="fa-solid fa-ban" aria-hidden="true"></i>
+                                    <span class="catalog-row-action-label">{{ $isBlacklisted ? __('messages.catalog_hidden_action') : __('messages.catalog_hide_action') }}</span>
                                 </button>
                             </div>
                         </div>
@@ -990,15 +1020,15 @@
                                 Try another country, niche, or clear a metric filter. Guest posts stay on the Guest posts tab.
                             </p>
                             <div class="d-flex flex-wrap justify-content-center gap-2 mb-3">
-                                <a href="{{ route('advertiser.catalog', ['product' => \App\Support\LinkInsertionProduct::TYPE]) }}" class="btn btn-outline-secondary btn-sm">Clear other filters</a>
-                                <a href="{{ route('advertiser.catalog', ['product' => \App\Support\LinkInsertionProduct::GUEST_POST]) }}" class="btn btn-primary btn-sm">Browse guest posts</a>
+                                <a href="{{ route('advertiser.catalog', ['product' => \App\Support\LinkInsertionProduct::TYPE]) }}" class="btn btn-outline-secondary btn-sm catalog-clear-all">{{ __('messages.catalog_clear_filters') }}</a>
+                                <a href="{{ route('advertiser.catalog', ['product' => \App\Support\LinkInsertionProduct::GUEST_POST]) }}" class="btn btn-primary btn-sm">{{ __('messages.catalog_try_guest_posts') }}</a>
                             </div>
                         @elseif($hasActiveFilters)
                             <p class="text-muted mb-3">
                                 Try broader filters — clear a category, widen price, or remove DA/DR limits.
                             </p>
                             <div class="d-flex flex-wrap justify-content-center gap-2 mb-3">
-                                <a href="{{ route('advertiser.catalog') }}" class="btn btn-primary btn-sm">Clear all filters</a>
+                                <a href="{{ route('advertiser.catalog', ['product' => \App\Support\LinkInsertionProduct::GUEST_POST]) }}" class="btn btn-primary btn-sm catalog-clear-all">{{ __('messages.catalog_clear_filters') }}</a>
                                 <a href="{{ route('advertiser.catalog', ['sort' => 'dr_desc']) }}" class="btn btn-outline-secondary btn-sm">Browse top DR</a>
                                 <button type="button" class="btn btn-outline-success btn-sm btn-suggest-website"
                                         data-search="{{ search_text(request('search')) }}">
@@ -1075,6 +1105,7 @@
             $viewPrices = $site->catalogPricesForViewer(auth()->user());
             $isOwnedByMe = ! empty($viewPrices['owned']);
             $catalogListPrice = (float) $viewPrices['list'];
+            $guestPostListPrice = $catalogListPrice;
             $catalogPublisherPrice = (float) $viewPrices['publisher'];
             $catalogSalePctNominal = $viewPrices['sale_percent_nominal'];
             $catalogSalePct = $catalogSalePctNominal; // nominal for data-* / JS
@@ -1096,29 +1127,50 @@
             } catch (\Throwable $e) {
                 report($e);
             }
+            $compareCategory = $mobileLabels[0] ?? '';
+            $compareCountry = '';
+            try {
+                $compareCountry = fullCountry($site->primaryCountryCode());
+            } catch (\Throwable $e) {
+                report($e);
+            }
         @endphp
         <article class="catalog-mobile-card {{ $isBlacklisted ? 'is-blacklisted' : '' }}{{ ! empty($catalogReported) && in_array((int) $site->id, $catalogReported, true) ? ' is-catalog-reported' : '' }}"
                  data-id="{{ $site->id }}"
                  data-name="{{ $displayName }}"
                  data-publisher-id="{{ (int) $site->publisher_id }}"
+                 data-compare-name="{{ $displayName }}"
+                 data-compare-category="{{ $compareCategory }}"
+                 data-compare-traffic="{{ is_numeric($site->traffic) ? number_format((float) $site->traffic) : '' }}"
+                 data-compare-dr="{{ is_numeric($site->dr) ? (int) $site->dr : '' }}"
+                 data-compare-da="{{ is_numeric($site->da) ? (int) $site->da : '' }}"
+                 data-compare-country="{{ $compareCountry }}"
+                 data-compare-gp-price="{{ $guestPostListPrice > 0 ? format_money($guestPostListPrice) : '' }}"
+                 data-compare-li-price="{{ ($offersLinkInsertion && $linkInsertionListPrice > 0) ? format_money($linkInsertionListPrice) : '' }}"
+                 data-compare-link-type="{{ $isLinkInsertionCatalog ? ($site->linkInsertionLinkTypeLabel() ?: '') : ($site->linkTypeLabel() ?: '') }}"
+                 data-compare-delivery="{{ $isLinkInsertionCatalog ? ($site->linkInsertionDeliveryLabel() ?: '') : ($site->turnaroundLabel() ?: '') }}"
+                 data-compare-publication="{{ $isLinkInsertionCatalog ? '' : ($site->publicationDurationLabel() ?: '') }}"
                  @if((int) ($site->getAttribute('owner_id') ?? 0) > 0) data-owner-id="{{ (int) $site->getAttribute('owner_id') }}" @endif
                  @if($isOwnedByMe) data-own-listing="1" @endif>
-            @include('advertiser.partials.catalog-new-ribbon', ['isNew' => $isNew])
             <div class="d-flex justify-content-between align-items-start gap-2 mb-2">
+                @include('advertiser.partials.catalog-row-select')
                 <div class="catalog-mobile-card__host d-flex align-items-start gap-2">
-                    @include('advertiser.partials.catalog-site-tile', [
-                        'label' => $displayHost,
-                        'alt' => $displayName !== '' ? $displayName : $displayHost,
-                        'size' => 'lg',
-                        'faviconUrl' => $tileFaviconUrl,
-                        'faviconChain' => $tileFaviconChain,
-                        'masked' => ! $showsIdentity,
-                        'openDetailsId' => (string) $site->id,
-                    ])
+                    <div class="catalog-tile-wrap">
+                        @include('advertiser.partials.catalog-new-ribbon', ['isNew' => $isNew])
+                        @include('advertiser.partials.catalog-site-tile', [
+                            'label' => $displayHost,
+                            'alt' => $displayName !== '' ? $displayName : $displayHost,
+                            'size' => 'lg',
+                            'faviconUrl' => $tileFaviconUrl,
+                            'faviconChain' => $tileFaviconChain,
+                            'masked' => ! $showsIdentity,
+                            'openDetailsId' => (string) $site->id,
+                        ])
+                    </div>
 
                     <div class="catalog-mobile-card__main">
                     <div class="catalog-site-title-row">
-                    <div class="fw-semibold text-dark catalog-site-name catalog-site-name--concat"
+                    <div class="fw-semibold catalog-site-name catalog-site-name--concat"
                          data-site-name-label
                          title="{{ $displayName }}">{{ $displayName }}</div>
                     @if($site->verified)
@@ -1185,6 +1237,7 @@
                     <span class="category-badge mt-1" title="{{ $mobileCategory }}">{{ $mobileCategory }}</span>
                     @include('advertiser.partials.catalog-meta-chips', [
                         'site' => $site,
+                        'isLinkInsertionCatalog' => $isLinkInsertionCatalog,
                     ])
                     </div>
                 </div>
@@ -1307,9 +1360,9 @@
                 </div>
             @endif
             @if($showAdvertiserPay)
-                {{-- Always present so homepage-only cards have a live You pay
-                     target (JS rewrites this when radios change). --}}
-                <div class="selected-price-info mt-1" id="price-info-mobile-{{ $site->id }}">
+                {{-- Live target for addon JS. Hidden on the card face so the
+                     Buy column is a single price block above Add to cart. --}}
+                <div class="selected-price-info catalog-pay-echo mt-1" id="price-info-mobile-{{ $site->id }}" hidden>
                     <small class="text-muted">
                         You pay:
                         <strong>{{ format_money($articlePay) }}</strong>
@@ -1389,17 +1442,6 @@
             @endif
             <div class="catalog-card-buy">
                 @include('advertiser.partials.catalog-site-buy', ['align' => 'start'])
-
-                @include('advertiser.partials.catalog-price', [
-                    'listPrice' => $catalogListPrice,
-                    'salePrice' => $catalogSalePrice,
-                    'salePercent' => $catalogSalePctDisplay,
-                    'align' => 'start',
-                    'bulkLabel' => $catalogDeals['bulk_note'] ?? null,
-                    'showFrom' => ! empty($catalogDeals['has_paid_addons']),
-                    'siteId' => $site->id,
-                    'featured' => $site->isFeatured(),
-                ])
             </div>
 
             <div class="catalog-row-actions mt-2">
@@ -1412,19 +1454,27 @@
                                 class="btn-icon-quiet favorite-btn {{ $isFavorited ? 'is-active' : '' }}"
                                 data-id="{{ $site->id }}"
                                 data-name="{{ $displayName }}"
+                                data-glass-tip
+                                data-glass-tip-title="{{ $isFavorited ? __('messages.catalog_unsave_site') : __('messages.catalog_save_site') }}"
+                                data-glass-tip-body="{{ $isFavorited ? __('messages.catalog_unsave_site_tip') : __('messages.catalog_save_site_tip') }}"
                                 data-glass-tip-placement="left"
-                                aria-label="{{ $isFavorited ? 'Remove from favorites' : 'Add to favorites' }}"
-                                title="{{ $isFavorited ? 'Remove from Favorites' : 'Add to Favorites' }}">
+                                aria-label="{{ $isFavorited ? __('messages.catalog_unsave_site') : __('messages.catalog_save_site') }}"
+                                title="{{ $isFavorited ? __('messages.catalog_unsave_site') : __('messages.catalog_save_site') }}">
                             <i class="fa-{{ $isFavorited ? 'solid' : 'regular' }} fa-heart" aria-hidden="true"></i>
+                            <span class="catalog-row-action-label">{{ $isFavorited ? __('messages.catalog_saved_action') : __('messages.catalog_save_action') }}</span>
                         </button>
                         <button type="button"
                                 class="btn-icon-quiet blacklist-btn {{ $isBlacklisted ? 'is-active' : '' }}"
                                 data-id="{{ $site->id }}"
                                 data-name="{{ $displayName }}"
+                                data-glass-tip
+                                data-glass-tip-title="{{ $isBlacklisted ? __('messages.catalog_unhide_site') : __('messages.catalog_hide_site') }}"
+                                data-glass-tip-body="{{ $isBlacklisted ? __('messages.catalog_unhide_site_tip') : __('messages.catalog_hide_site_tip') }}"
                                 data-glass-tip-placement="left"
-                                aria-label="{{ $isBlacklisted ? 'Remove from blacklist' : 'Blacklist site' }}"
-                                title="{{ $isBlacklisted ? 'Remove from Blacklist' : 'Blacklist Site' }}">
+                                aria-label="{{ $isBlacklisted ? __('messages.catalog_unhide_site') : __('messages.catalog_hide_site') }}"
+                                title="{{ $isBlacklisted ? __('messages.catalog_unhide_site') : __('messages.catalog_hide_site') }}">
                             <i class="fa-solid fa-ban" aria-hidden="true"></i>
+                            <span class="catalog-row-action-label">{{ $isBlacklisted ? __('messages.catalog_hidden_action') : __('messages.catalog_hide_action') }}</span>
                         </button>
                     </div>
                 </div>
@@ -1654,15 +1704,15 @@
                     Try another country, niche, or clear a metric filter. Guest posts stay on the Guest posts tab.
                 </p>
                 <div class="d-flex flex-wrap justify-content-center gap-2">
-                    <a href="{{ route('advertiser.catalog', ['product' => \App\Support\LinkInsertionProduct::TYPE]) }}" class="btn btn-outline-secondary btn-sm">Clear other filters</a>
-                    <a href="{{ route('advertiser.catalog', ['product' => \App\Support\LinkInsertionProduct::GUEST_POST]) }}" class="btn btn-primary btn-sm">Browse guest posts</a>
+                    <a href="{{ route('advertiser.catalog', ['product' => \App\Support\LinkInsertionProduct::TYPE]) }}" class="btn btn-outline-secondary btn-sm catalog-clear-all">{{ __('messages.catalog_clear_filters') }}</a>
+                    <a href="{{ route('advertiser.catalog', ['product' => \App\Support\LinkInsertionProduct::GUEST_POST]) }}" class="btn btn-primary btn-sm">{{ __('messages.catalog_try_guest_posts') }}</a>
                 </div>
             @elseif($hasActiveFilters)
                 <p class="text-muted mb-3">
                     Try broader filters — clear a category, widen price, or remove DA/DR limits.
                 </p>
                 <div class="d-flex flex-wrap justify-content-center gap-2">
-                    <a href="{{ route('advertiser.catalog') }}" class="btn btn-primary btn-sm">Clear all filters</a>
+                    <a href="{{ route('advertiser.catalog', ['product' => \App\Support\LinkInsertionProduct::GUEST_POST]) }}" class="btn btn-primary btn-sm catalog-clear-all">{{ __('messages.catalog_clear_filters') }}</a>
                     <button type="button" class="btn btn-outline-success btn-sm btn-suggest-website"
                             data-search="{{ search_text(request('search')) }}">
                         <i class="fa-solid fa-lightbulb me-1" aria-hidden="true"></i> Suggest a website

@@ -384,6 +384,60 @@ class CatalogController extends Controller
     }
 
     /**
+     * Sites that accept priced link insertions (same predicate as the LI tab).
+     *
+     * @param  Builder<Site>  $query
+     */
+    private function constrainCatalogLinkInsertionQuery($query): void
+    {
+        if (! Site::hasSitesColumn('accepts_link_insertions')) {
+            $query->whereRaw('1 = 0');
+
+            return;
+        }
+
+        $query->where('accepts_link_insertions', 1)
+            ->where(function ($q) {
+                if (Site::hasSitesColumn('listing_link_insertion_price')) {
+                    $q->where('listing_link_insertion_price', '>', 0);
+                }
+                if (Site::hasSitesColumn('link_insertion_price')) {
+                    $q->orWhere('link_insertion_price', '>', 0);
+                }
+            });
+    }
+
+    /**
+     * Guest-post and link-insertion result counts for the current filters
+     * (before the active product tab is applied).
+     *
+     * @param  Builder<Site>  $query
+     * @return array{guest_post: int, link_insertion: int}
+     */
+    private function catalogTabCounts($query): array
+    {
+        $guest = 0;
+        $insertions = 0;
+        try {
+            $guest = (int) (clone $query)->count();
+        } catch (\Throwable $e) {
+            Log::warning('Catalog guest-post tab count failed', ['error' => $e->getMessage()]);
+        }
+        try {
+            $liQuery = clone $query;
+            $this->constrainCatalogLinkInsertionQuery($liQuery);
+            $insertions = (int) $liQuery->count();
+        } catch (\Throwable $e) {
+            Log::warning('Catalog link-insertion tab count failed', ['error' => $e->getMessage()]);
+        }
+
+        return [
+            'guest_post' => $guest,
+            'link_insertion' => $insertions,
+        ];
+    }
+
+    /**
      * Catalog niche options — loaded from the categories table (same source as
      * publisher/admin). Prefer Category::catalogPickerRows() / catalogPickerNames().
      *
@@ -427,6 +481,10 @@ class CatalogController extends Controller
             'showBlacklistedOnly' => search_text($request->input('blacklist_filter')) === '1',
             'inventoryFrom' => null,
             'pageRedirect' => null,
+            'catalogTabCounts' => [
+                'guest_post' => 0,
+                'link_insertion' => 0,
+            ],
         ];
     }
 
@@ -470,6 +528,10 @@ class CatalogController extends Controller
         $catalogReported = $listing['catalogReported'] ?? [];
         $showBlacklistedOnly = $listing['showBlacklistedOnly'];
         $inventoryFrom = $listing['inventoryFrom'] ?? null;
+        $catalogTabCounts = $listing['catalogTabCounts'] ?? [
+            'guest_post' => 0,
+            'link_insertion' => 0,
+        ];
 
         // Get predefined countries for filter dropdown (flat map kept for compat).
         $availableCountries = $this->getAvailableCountries();
@@ -590,7 +652,8 @@ class CatalogController extends Controller
             'catalogSpendableBalance',
             'currentUser',
             'urlVisibility',
-            'inventoryFrom'
+            'inventoryFrom',
+            'catalogTabCounts'
         ));
     }
 
@@ -633,6 +696,10 @@ class CatalogController extends Controller
                 'currentUser' => $currentUser,
                 'urlVisibility' => $urlVisibility,
                 'inventoryFrom' => $listing['inventoryFrom'] ?? null,
+                'catalogTabCounts' => $listing['catalogTabCounts'] ?? [
+                    'guest_post' => 0,
+                    'link_insertion' => 0,
+                ],
                 'cart' => $cart,
             ])
             ->header('Cache-Control', 'no-store, private');
@@ -1058,23 +1125,6 @@ class CatalogController extends Controller
             $query->where('publication_time', $publication);
         }
 
-        $productFilter = LinkInsertionProduct::normalize($request->input('product'));
-        if ($request->filled('product') && $productFilter === LinkInsertionProduct::TYPE) {
-            if (Site::hasSitesColumn('accepts_link_insertions')) {
-                $query->where('accepts_link_insertions', 1)
-                    ->where(function ($q) {
-                        if (Site::hasSitesColumn('listing_link_insertion_price')) {
-                            $q->where('listing_link_insertion_price', '>', 0);
-                        }
-                        if (Site::hasSitesColumn('link_insertion_price')) {
-                            $q->orWhere('link_insertion_price', '>', 0);
-                        }
-                    });
-            } else {
-                $query->whereRaw('1 = 0');
-            }
-        }
-
         // More → Bulk deals — pack program only (not custom Sale −%).
         if ($request->input('bulk_deals') == '1' || $request->input('bulk_deals') === 1) {
             if (Site::hasSitesColumn('bulk_discount_enabled')) {
@@ -1099,6 +1149,13 @@ class CatalogController extends Controller
         if ($request->filled('new_badge') && $request->new_badge == 1) {
             $query->where('created_at', '>=', now()->subDays(30))
                 ->where('created_at', '<=', Site::PLAUSIBLE_SQL_DATETIME_CEIL);
+        }
+
+        $catalogTabCounts = $this->catalogTabCounts($query);
+
+        $productFilter = LinkInsertionProduct::normalize($request->input('product'));
+        if ($request->filled('product') && $productFilter === LinkInsertionProduct::TYPE) {
+            $this->constrainCatalogLinkInsertionQuery($query);
         }
 
         // Filtered-set min (advertiser-facing), not the current page min.
@@ -1179,6 +1236,7 @@ class CatalogController extends Controller
             'showBlacklistedOnly' => $showBlacklistedOnly,
             'inventoryFrom' => $inventoryFrom,
             'pageRedirect' => $pageRedirect,
+            'catalogTabCounts' => $catalogTabCounts,
         ];
     }
 

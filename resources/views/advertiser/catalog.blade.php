@@ -14,7 +14,7 @@
         .catalog-results-busy[hidden]{display:none!important}
         .catalog-page button.site-badge-new,
         .catalog-page .site-badge-new{background:#ef4444!important;background-image:none!important;color:#fff!important;border:0!important}
-        .catalog-page button.site-badge-new.catalog-new-ribbon{background:transparent!important;width:56px!important;height:56px!important;padding:0!important;min-width:0!important;border-radius:0!important;box-shadow:none!important}
+        .catalog-page button.site-badge-new.catalog-new-ribbon{background:transparent!important;width:36px!important;height:36px!important;padding:0!important;min-width:0!important;border-radius:0!important;box-shadow:none!important}
         .catalog-page .metric-source{width:var(--metric-source-size,20px);height:var(--metric-source-size,20px);max-width:var(--metric-source-size,20px);max-height:var(--metric-source-size,20px);overflow:hidden}
         .catalog-page .metric-source img{width:var(--metric-source-size,20px);height:var(--metric-source-size,20px);max-width:var(--metric-source-size,20px);max-height:var(--metric-source-size,20px)}
         /* Category clamps — must survive a stale CDN catalog.css (chips otherwise
@@ -47,7 +47,7 @@
             transform:none!important
         }
         /* Price chips: do not shrink into two clipped lines inside the pill. */
-        .catalog-page .filter-presets[data-preset-group="price"]{display:flex;flex-wrap:nowrap;gap:6px;max-width:100%;overflow-x:auto}
+        .catalog-page .filter-presets[data-preset-group="price"]{display:flex;flex-wrap:wrap;gap:6px;max-width:100%;overflow:visible}
         .catalog-page .filter-preset{flex:0 0 auto;width:auto;white-space:nowrap;padding:0 10px;height:24px;font-size:11px;font-weight:600}
         .catalog-page .site-chip--sensitive{background:var(--brand-primary-bg,#e6f5f5)!important;color:var(--brand-primary,#1a585e)!important;border-color:var(--brand-primary-border,#b8e4e4)!important}
         .catalog-page .catalog-filter-actions #toggleMoreFiltersBtn,
@@ -132,7 +132,19 @@
     @endif
 
     @if(($approvedArticleCount ?? 0) === 0 && empty($orderingSubmission))
-        <div class="alert alert-info border-0 shadow-sm d-flex flex-wrap justify-content-between align-items-center gap-2 catalog-article-banner catalog-article-banner--one-line py-2">
+        @php
+            $catalogLiArticleBanner = \App\Support\LinkInsertionProduct::isCatalogLinkInsertionTab($catalogProductTab ?? request('product'));
+        @endphp
+        {{-- Both banners stay in the DOM so live product-tab clicks can swap them
+             without a full reload (results fragment does not include this chrome). --}}
+        <div class="alert alert-info border-0 shadow-sm catalog-article-banner catalog-article-banner--li py-2"
+             data-catalog-article-banner="li"
+             @if(! $catalogLiArticleBanner) hidden @endif>
+            <div class="small mb-0">{{ __('messages.catalog_li_banner') }}</div>
+        </div>
+        <div class="alert alert-info border-0 shadow-sm d-flex flex-wrap justify-content-between align-items-center gap-2 catalog-article-banner catalog-article-banner--one-line py-2"
+             data-catalog-article-banner="gp"
+             @if($catalogLiArticleBanner) hidden @endif>
             <div class="small mb-0 text-nowrap text-truncate">
                 Each site needs its own approved article — upload or assign before you pay.
             </div>
@@ -289,8 +301,8 @@
     if (request('favorites_filter') == '1') $activeFilterChips[] = ['label' => 'Favorites', 'key' => 'favorites_filter', 'params' => ['favorites_filter']];
     if (request('blacklist_filter') == '1') $activeFilterChips[] = ['label' => 'Blacklist', 'key' => 'blacklist_filter', 'params' => ['blacklist_filter']];
     if (request('bulk_deals') == '1') $activeFilterChips[] = ['label' => 'Bulk deals', 'key' => 'bulk_deals', 'params' => ['bulk_deals']];
-    if (request('da_min') || request('da_max')) $activeFilterChips[] = ['label' => 'DA (Domain Authority)', 'key' => 'da', 'params' => ['da_min', 'da_max']];
-    if (request('dr_min') || request('dr_max')) $activeFilterChips[] = ['label' => 'DR (Domain Rating)', 'key' => 'dr', 'params' => ['dr_min', 'dr_max']];
+    if (request('da_min') || request('da_max')) $activeFilterChips[] = ['label' => \App\Services\Catalog\CatalogFilterChips::scoreLabel('DA', request('da_min'), request('da_max')), 'key' => 'da', 'params' => ['da_min', 'da_max']];
+    if (request('dr_min') || request('dr_max')) $activeFilterChips[] = ['label' => \App\Services\Catalog\CatalogFilterChips::scoreLabel('DR', request('dr_min'), request('dr_max')), 'key' => 'dr', 'params' => ['dr_min', 'dr_max']];
     if (request('traffic_min') || request('traffic_max')) $activeFilterChips[] = ['label' => 'Traffic', 'key' => 'traffic', 'params' => ['traffic_min', 'traffic_max']];
     if (request('new_badge') == '1') $activeFilterChips[] = ['label' => 'New sites', 'key' => 'new_badge', 'params' => ['new_badge']];
     if (request('on_sale') == '1') $activeFilterChips[] = ['label' => 'On sale', 'key' => 'on_sale', 'params' => ['on_sale']];
@@ -358,6 +370,17 @@
             @endphp
 
             {{-- Filters + sort + suggest sit immediately above the results table. --}}
+            <div class="catalog-mobile-filter-bar">
+                <button type="button"
+                        class="btn btn-sm btn-outline-secondary catalog-filters-toggle"
+                        id="catalogFiltersToggle"
+                        aria-expanded="false"
+                        aria-controls="catalogFiltersPanel">
+                    <i class="fa-solid fa-sliders" aria-hidden="true"></i>
+                    <span>{{ __('messages.catalog_filters_toggle') }}</span>
+                    <span class="catalog-filters-toggle__count{{ count($activeFilterChips) ? '' : ' d-none' }}" data-catalog-filter-count>{{ count($activeFilterChips) }}</span>
+                </button>
+            </div>
             <div class="row mb-3" id="catalogFiltersPanel">
                 <div class="col-md-12">
                     <div class="card border-0 shadow-sm catalog-filters-card">
@@ -816,10 +839,22 @@
                         </div>
                     </div>
                 </form>
+                        </div>
+                    </div>
+                </div>
+            </div>
 
-                <div id="catalogActiveFiltersHost">
+            <div class="catalog-sticky-chrome">
+            @include('advertiser.partials.catalog-product-tabs', [
+                'context' => 'catalog',
+                'activeProduct' => $catalogProductTab,
+                'catalogTabCounts' => $catalogTabCounts ?? [],
+            ])
+            </div>
+
+            <div id="catalogActiveFiltersHost">
                 @if(count($activeFilterChips))
-                    <div class="d-flex flex-wrap align-items-center gap-2 mt-3" id="activeFilterChips">
+                    <div class="d-flex flex-wrap align-items-center gap-2 mb-2" id="activeFilterChips">
                         <span class="small text-muted me-1">Active:</span>
                         @foreach($activeFilterChips as $chip)
                             @php
@@ -858,16 +893,7 @@
                         <a href="{{ route('advertiser.catalog', ['product' => $catalogProductTab]) }}" class="small ms-1 catalog-clear-all">Clear all</a>
                     </div>
                 @endif
-                </div>
-                        </div>
-                    </div>
-                </div>
             </div>
-
-            @include('advertiser.partials.catalog-product-tabs', [
-                'context' => 'catalog',
-                'activeProduct' => $catalogProductTab,
-            ])
 
             <div class="catalog-results-bar d-flex flex-wrap align-items-center justify-content-between gap-2 mb-2">
                 <div class="text-muted small" id="catalogResultsCount" data-catalog-results-count>
@@ -914,9 +940,32 @@
                  dead for as long as the request took. --}}
             @include('advertiser.partials.catalog-results')
 
+            <div class="catalog-compare-bar" id="catalogCompareBar" hidden>
+                <span class="catalog-compare-bar__count" data-catalog-selected-count>0 selected</span>
+                <button type="button" class="btn btn-sm btn-primary" id="catalogBulkAddBtn">{{ __('messages.catalog_add_n_to_cart', ['count' => 0]) }}</button>
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="catalogCompareBtn" disabled>{{ __('messages.catalog_compare') }}</button>
+                <button type="button" class="btn btn-sm btn-link catalog-compare-bar__clear" id="catalogSelectClear">Clear selection</button>
+            </div>
+
+            <div class="catalog-mobile-cart-bar" id="catalogMobileCartBar" hidden>
+                <span class="catalog-mobile-cart-bar__count" data-catalog-mobile-cart-count></span>
+                <button type="button" class="btn btn-sm btn-primary" onclick="openCart()">{{ __('messages.catalog_mobile_cart') }}</button>
+            </div>
         </div>
     </div>
 
+</div>
+
+<div class="modal fade" id="catalogCompareModal" tabindex="-1" aria-labelledby="catalogCompareTitle" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 class="modal-title h5 mb-0" id="catalogCompareTitle">{{ __('messages.catalog_compare_title') }}</h2>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body" id="catalogCompareBody"></div>
+        </div>
+    </div>
 </div>
 
 <script>
@@ -945,7 +994,21 @@ window.CatalogConfig = {
     defaultSort: @json(\App\Services\Catalog\CatalogUrlQuery::DEFAULT_SORT),
     i18n: {
         priceFrom: @json(__('messages.catalog_price_from')),
-        percentOff: @json(__('messages.catalog_percent_off'))
+        percentOff: @json(__('messages.catalog_percent_off')),
+        addNToCart: @json(__('messages.catalog_add_n_to_cart')),
+        compare: @json(__('messages.catalog_compare')),
+        compareLimit: @json(__('messages.catalog_compare_limit')),
+        selectedCount: @json(__('messages.catalog_selected_count')),
+        guestPost: @json(__('messages.catalog_tab_guest_posts')),
+        linkInsertion: @json(__('messages.catalog_tab_link_insertions')),
+        addToCart: @json(__('messages.catalog_preview_add_to_cart')),
+        saveAction: @json(__('messages.catalog_save_action')),
+        savedAction: @json(__('messages.catalog_saved_action')),
+        hideAction: @json(__('messages.catalog_hide_action')),
+        hiddenAction: @json(__('messages.catalog_hidden_action')),
+        mobileCartCount: @json(__('messages.catalog_mobile_cart_count')),
+        filters: @json(__('messages.catalog_filters_toggle')),
+        filtersCount: @json(__('messages.catalog_filters_toggle_count'))
     },
     // Phase 7 kill switch — false falls back to full page navigations.
     liveSearch: @json((bool) config('catalog.live_search.enabled', true)),
