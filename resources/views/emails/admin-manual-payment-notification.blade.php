@@ -4,7 +4,7 @@
 A customer has placed an order with manual payment.
 
 Customer: {{ $customer->name }}
-Total Amount: €{{ number_format($totalAmount, 2) }}
+Total Amount: {{ \App\Support\MailNotificationPresenter::euro((float) $totalAmount) }}
 
 Please review and confirm payment.
 

@@ -1,28 +1,17 @@
 @component('mail::message')
-# Order Rejected
+Hello,
 
-Dear Customer,
+@include('emails.partials.mail-details-table', ['rows' => $detailRows ?? []])
 
-We regret to inform you that your order #{{ $order->order_number }} has been rejected by the publisher.
+@if(!empty($reason))
+<table class="mail-protection" width="100%" cellpadding="0" cellspacing="0" role="presentation" style="margin:0 0 16px 0;background-color:#fef3c7;border:1px solid #fde68a;border-radius:10px;font-family:Arial,Helvetica,sans-serif;">
+<tr>
+<td style="padding:12px 14px;color:#92400e;font-family:Arial,Helvetica,sans-serif;font-size:13px;line-height:1.5;"><strong>Reason:</strong> {{ $reason }}</td>
+</tr>
+</table>
+@endif
 
-## Order Details:
-
-- Website: {{ $site->site_name }}@if(!empty($site->domain)) ({{ $site->domain }})@endif
-- Order number: #{{ $order->order_number }}
-
-## Reason for Rejection:
-{{ $reason }}
-
-## What's Next?
-
-You can browse other publishers and place a new order.
-
-@component('mail::button', ['url' => rtrim(app_public_url(), '/').route('advertiser.catalog', [], false)])
+@component('mail::button', ['url' => $ctaUrl ?? rtrim(app_public_url(), '/').route('advertiser.catalog', [], false)])
 Browse Publishers
 @endcomponent
-
-If you have any questions, please contact our support team.
-
-Thanks,<br>
-{{ config('app.name') }}
 @endcomponent

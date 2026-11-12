@@ -35,7 +35,7 @@ class AdvertiserOrderStalledNotice extends PlatformMailable
     {
         $siteName = $this->site?->site_name ?: ($this->orderItem->site_name ?: 'your placement');
 
-        return $this->subject('We are chasing your order #'.$this->order->order_number)
+        return $this->subject($this->siteNamedSubject('We are chasing your order on {site}', $this->order, $this->orderItem, $this->site))
             ->markdown('emails.advertiser.order-stalled', [
                 'firstName' => $this->firstName($this->advertiser),
                 'order' => $this->order,

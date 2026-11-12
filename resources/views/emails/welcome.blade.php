@@ -1,5 +1,7 @@
 @component('mail::message')
-# Welcome aboard, {{ $firstName }}!
+Hello,
+
+Welcome aboard.
 
 Thanks for joining {{ $brand['name'] ?? config('app.name') }}.
 

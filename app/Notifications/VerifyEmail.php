@@ -18,13 +18,11 @@ class VerifyEmail extends BaseVerifyEmail
     {
         $verificationUrl = static::signedUrlFor($notifiable);
         $appName = config('app.name', 'SEOLinkBuildings');
-        $name = trim((string) ($notifiable->name ?? 'there'));
-        $firstName = explode(' ', $name)[0] ?: 'there';
         $minutes = (int) Config::get('auth.verification.expire', 60);
 
         return (new MailMessage)
             ->subject("Verify your {$appName} email")
-            ->greeting("Hi {$firstName},")
+            ->greeting('Hello,')
             ->line('Thanks for creating your account. Please verify your email address to activate login and start using the marketplace.')
             ->action('Click to verify', $verificationUrl)
             ->line("This verification link expires in {$minutes} minutes.")

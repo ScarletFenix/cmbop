@@ -1,7 +1,7 @@
 @component('mail::message')
 # Add funds to place your first guest post
 
-Hi {{ $firstName }},
+Hello,
 
 It's been two weeks since you joined as an advertiser, and your wallet still hasn't been topped up with a deposit.
 

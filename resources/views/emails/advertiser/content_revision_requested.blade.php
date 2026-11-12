@@ -1,7 +1,7 @@
 @component('mail::message')
 # Revised article requested
 
-Dear Customer,
+Hello,
 
 The publisher for {{ $site->site_name }} asked you to send a revised article for order #{{ $order->order_number }}.
 

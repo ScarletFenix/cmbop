@@ -5,7 +5,7 @@
 
 ## Deposit details
 
-- Amount: €{{ number_format((float) $deposit->amount, 2) }}
+- Amount: {{ \App\Support\MailNotificationPresenter::euro((float) $deposit->amount) }}
 - Payment method: {{ \App\Models\Invoice::paymentMethodLabel($deposit->payment_method) }}
 - Reference code: REF{{ $deposit->reference_code }}
 - Requested: {{ optional($deposit->created_at)->format('M d, Y H:i') }}

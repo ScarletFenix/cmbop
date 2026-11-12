@@ -450,7 +450,8 @@ class AdminPublisherOnboardingTest extends TestCase
         $this->assertInstanceOf(PublisherStaffOnboardingMail::class, $mail);
         $html = $mail->render();
         $this->assertStringNotContainsString('fee', strtolower($html));
-        $this->assertStringContainsString('Teqno Ltd', $html);
+        $this->assertStringNotContainsString('Teqno Ltd', $html);
+        $this->assertStringNotContainsString('17392540', $html);
     }
 
     /**

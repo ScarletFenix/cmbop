@@ -1,5 +1,5 @@
 @component('mail::message')
-Hello {{ $partnerName }},
+Hello,
 
 Someone asked to change the email on your SEOLinkBuildings partner account to **{{ $newEmail }}**. If this was you, no action is needed on this message — confirm from the new address instead.
 
@@ -9,5 +9,5 @@ If this was not you, cancel the change. That signs out every session and locks t
 This wasn’t me
 @endcomponent
 
-Teqno Ltd · SEOLinkBuildings partner desk
+SEOLinkBuildings partner desk
 @endcomponent

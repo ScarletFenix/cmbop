@@ -1,7 +1,7 @@
 @component('mail::message')
 # Restore the live link for order #{{ $orderNumber }}
 
-Hi {{ $firstName }},
+Hello,
 
 A monthly 12-month link guarantee check did not find the advertiser’s target URL as a hyperlink on the live page for {{ $siteName }}.
 

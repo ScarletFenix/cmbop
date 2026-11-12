@@ -1,7 +1,7 @@
 @component('mail::message')
 # Article ready to publish — order #{{ $orderNumber }}
 
-Hi {{ $firstName }},
+Hello,
 
 The advertiser approved the written article for {{ $siteName }}. Please publish it and submit the live URL.
 

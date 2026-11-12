@@ -4,6 +4,7 @@ namespace App\Mail;
 
 use App\Models\DepositRequest;
 use App\Models\Invoice;
+use App\Support\MailNotificationPresenter;
 
 class DepositRefunded extends PlatformMailable
 {
@@ -23,7 +24,7 @@ class DepositRefunded extends PlatformMailable
     public function build()
     {
         $deposit = $this->deposit->loadMissing('user');
-        $amount = number_format((float) $deposit->amount, 2);
+        $amount = ltrim(MailNotificationPresenter::euro((float) $deposit->amount), '€');
         $response = is_array($deposit->paypal_response) ? $deposit->paypal_response : [];
         $debt = round((float) ($response['refund']['debt_created'] ?? 0), 2);
 

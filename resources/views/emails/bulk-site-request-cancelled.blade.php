@@ -1,7 +1,7 @@
 @component('mail::message')
 # Your bulk website request was cancelled
 
-Hi {{ $firstName }},
+Hello,
 
 We have cancelled bulk request #{{ $bulkRequest->id }}@if($count > 0), which covered {{ $count }} {{ $count === 1 ? 'website' : 'websites' }}@endif. Those sites will not be prepared for listing.
 

@@ -1,7 +1,7 @@
 @component('mail::message')
 # A website is waiting for your acceptance
 
-Hi {{ $publisherName }},
+Hello,
 
 Our team added {{ $domain }} to your account. Please review it and accept it so it appears in your My Sites list.
 

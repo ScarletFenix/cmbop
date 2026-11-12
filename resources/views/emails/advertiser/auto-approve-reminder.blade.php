@@ -1,23 +1,7 @@
 @component('mail::message')
-# 1 day left before auto-complete
-
-Your guest post on {{ $siteName }} (order #{{ $order->order_number }}) is still under review.
+Hello,
 
 If you take no action in about {{ $hoursRemaining }} hour(s), the order will be auto-completed and the publisher will be paid.
 
-@php $safeLive = \App\Support\MailNotificationPresenter::safeLiveUrl($liveUrl ?? null); @endphp
-@if($safeLive)
-Live article URL: [{{ $safeLive }}]({{ $safeLive }})
-@endif
-
-You can:
-- Approve the live post now, or
-- Request changes if something needs fixing (this pauses auto-complete until the publisher resubmits)
-
-@component('mail::button', ['url' => $ordersUrl])
-Review order
-@endcomponent
-
-Thanks,<br>
-{{ config('app.name') }}
+@include('emails.partials.mail-article-live', ['articleLive' => $articleLive ?? null])
 @endcomponent

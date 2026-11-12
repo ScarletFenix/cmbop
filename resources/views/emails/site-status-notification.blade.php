@@ -1,5 +1,5 @@
 @component('mail::message')
-Dear {{ $site->publisherName ?? 'Publisher' }},
+Hello,
 
 {{-- Markdown mail treats 4+ space indents as a code block, which prints leftover **asterisks** instead of bold. Keep body lines at column 0. --}}
 @switch($action)
@@ -116,7 +116,7 @@ There has been a status change for your site <strong>{{ $site->site_name }}</str
 - Site Name: {{ $site->site_name }}
 - Site URL: {{ $site->site_url }}
 - Category: {{ $site->category }}
-- Price: €{{ number_format($site->price, 2) }}
+- Price: {{ \App\Support\MailNotificationPresenter::euro((float) $site->price) }}
 - DA/DR: {{ $site->da }}/{{ $site->dr }}
 - Traffic: {{ number_format($site->traffic) }} monthly visitors
 

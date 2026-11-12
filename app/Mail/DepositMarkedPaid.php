@@ -4,6 +4,7 @@ namespace App\Mail;
 
 use App\Models\DepositRequest;
 use App\Services\Wallet\ManualDepositApproveLink;
+use App\Support\MailNotificationPresenter;
 
 /**
  * Admin alert: the advertiser says the transfer has left their bank. Nothing is
@@ -26,7 +27,7 @@ class DepositMarkedPaid extends PlatformMailable
 
     public function build()
     {
-        return $this->subject('Payment reported — €'.number_format((float) $this->deposit->amount, 2).' deposit awaiting confirmation')
+        return $this->subject('Payment reported — '.MailNotificationPresenter::euro((float) $this->deposit->amount).' deposit awaiting confirmation')
             ->markdown('emails.deposit-marked-paid')
             ->with([
                 'deposit' => $this->deposit,

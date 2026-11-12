@@ -1,7 +1,7 @@
 @component('mail::message')
 # Websites from your bulk request still need you
 
-Hi {{ $publisherName }},
+Hello,
 
 Bulk request #{{ $bulkRequest->id }} is still waiting on you.
 

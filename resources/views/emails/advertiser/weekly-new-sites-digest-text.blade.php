@@ -1,34 +1,45 @@
 @php
-    $cardCount = $cards->count();
+    $support = \App\Support\MailNotificationPresenter::supportEmail() ?: 'support@seolinkbuildings.com';
+    $matchedPairs = collect($cards)
+        ->map(function ($card) {
+            $niche = trim((string) ($card['niche'] ?? ''));
+            $country = trim((string) ($card['country_label'] ?? ''));
+            if ($niche !== '' && $country !== '') {
+                return $niche.' · '.$country;
+            }
+
+            return $niche !== '' ? $niche : $country;
+        })
+        ->filter()
+        ->unique()
+        ->values();
 @endphp
 New sites in your niches
 
-Hi {{ $firstName }}, here {{ $cardCount === 1 ? 'is a newly listed site' : 'are '.$cardCount.' newly listed sites' }} that match placements you have paid for.
+Hello,
+@if($matchedPairs->isNotEmpty())
+
+Matched on: {{ $matchedPairs->implode(' | ') }}
+@endif
 
 @foreach($cards as $card)
 {{ $card['domain'] }}
-{{ $card['niche'] }}@if(!empty($card['country_label'])) · {{ $card['country_label'] }}@endif
+{{ $card['niche'] ?? '' }}@if(!empty($card['country_label'])) · {{ $card['country_label'] }}@endif
 
-@if($card['da'] !== null)
+@if(($card['da'] ?? null) !== null)
 DA {{ $card['da'] }}
 @endif
-@if($card['dr'] !== null)
+@if(($card['dr'] ?? null) !== null)
 DR {{ $card['dr'] }}
 @endif
-@if($card['traffic'] !== null)
-Organic traffic {{ number_format((int) $card['traffic']) }}
+@if(($card['price'] ?? null) !== null)
+from {{ \App\Support\MailNotificationPresenter::euro((float) $card['price']) }}
 @endif
-@if(!empty($card['metrics_checked_at']))
-Metrics checked {{ $card['metrics_checked_at'] }}
-@endif
-@if($card['price'] !== null)
-Price: €{{ number_format((float) $card['price'], 2) }}
-@endif
-View site details: {{ $card['details_url'] }}
+View site: {{ $card['details_url'] }}
 
 @endforeach
 @if(count($browseLinks) === 1)
-Browse matching sites ({{ $browseLinks[0]['niche'] }} in {{ $browseLinks[0]['country_label'] }}): {{ $browseLinks[0]['url'] }}
+Browse matching sites: {{ $browseLinks[0]['url'] }}
 @elseif(count($browseLinks) > 1)
 Browse matching sites:
 @foreach($browseLinks as $link)
@@ -36,10 +47,10 @@ Browse matching sites:
 @endforeach
 @endif
 
-{{ $brand['name'] ?? 'SEOLinkBuildings' }}
-@if(!empty($supportLine))
-{{ $supportLine }}
-@endif
+Questions? Just reply to this email or write to {{ $support }}
 
-Manage new-site email preferences: {{ $preferencesUrl }}
-Unsubscribe from this digest: {{ $unsubscribeUrl }}
+SEOLinkBuildings · European guest post marketplace · 1000+ publishers
+
+Help center: {{ \App\Support\TransactionalMailTheme::publicPath('/faq') }}
+Notification settings: {{ $preferencesUrl }}
+Unsubscribe: {{ $unsubscribeUrl }}

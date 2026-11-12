@@ -6,18 +6,18 @@
 @endphp
 # Withdrawal Request {{ ucfirst($newStatus) }}
 
-Dear {{ $withdrawal->user?->name ?? 'Publisher' }},
+Hello,
 
 Your withdrawal request has been {{ ucfirst($newStatus) }}.
 
 ## Request Details:
 
 - Request Date: {{ $withdrawal->created_at->format('F j, Y') }}
-- Requested Amount: €{{ number_format((float) $withdrawal->amount, 2) }}
+- Requested Amount: {{ \App\Support\MailNotificationPresenter::euro((float) $withdrawal->amount) }}
 @if((float) ($withdrawal->fee ?? 0) > 0)
-- Platform Fee: -€{{ number_format((float) $withdrawal->fee, 2) }}
+- Platform Fee: -{{ \App\Support\MailNotificationPresenter::euro((float) $withdrawal->fee) }}
 @endif
-- Net Payout: €{{ number_format((float) ($withdrawal->net_amount ?? ((float) $withdrawal->amount - (float) ($withdrawal->fee ?? 0))), 2) }}
+- Net Payout: {{ \App\Support\MailNotificationPresenter::euro((float) ($withdrawal->net_amount ?? ((float) $withdrawal->amount - (float) ($withdrawal->fee ?? 0)))) }}
 - Payment Method: {{ \App\Models\Invoice::paymentMethodLabel($withdrawal->payment_method) }}
 
 @if($notes)
@@ -30,7 +30,7 @@ Your withdrawal request has been {{ ucfirst($newStatus) }}.
 @php
     $netPaid = (float) ($withdrawal->net_amount ?? ((float) $withdrawal->amount - (float) ($withdrawal->fee ?? 0)));
 @endphp
-The amount of €{{ number_format($netPaid, 2) }} has been sent to your {{ \App\Models\Invoice::paymentMethodLabel($withdrawal->payment_method) }} account.
+The amount of {{ \App\Support\MailNotificationPresenter::euro((float) $netPaid) }} has been sent to your {{ \App\Models\Invoice::paymentMethodLabel($withdrawal->payment_method) }} account.
 
 @if(!empty($hasStatement) && !empty($statementUrl))
 @component('mail::button', ['url' => $statementUrl])
@@ -45,7 +45,7 @@ View payout documents
 @endif
 
 @elseif($newStatus == 'cancelled')
-The amount of €{{ number_format((float) $withdrawal->amount, 2) }} has been refunded to your wallet balance.
+The amount of {{ \App\Support\MailNotificationPresenter::euro((float) $withdrawal->amount) }} has been refunded to your wallet balance.
 
 @component('mail::button', ['url' => $withdrawUrl])
 View Withdrawals

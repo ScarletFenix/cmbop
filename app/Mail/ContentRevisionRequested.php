@@ -20,7 +20,7 @@ class ContentRevisionRequested extends PlatformMailable
 
     public function build()
     {
-        return $this->subject('Publisher requested a revised article — Order #'.$this->order->order_number)
+        return $this->subject($this->siteNamedSubject('Correction requested on {site}', $this->order, $this->orderItem, $this->site))
             ->markdown('emails.advertiser.content_revision_requested');
     }
 }

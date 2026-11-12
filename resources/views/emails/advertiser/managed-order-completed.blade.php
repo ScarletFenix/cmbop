@@ -1,7 +1,7 @@
 @component('mail::message')
 # Completed · Managed by SLB
 
-Hello {{ $firstName ?? ($order->user?->name ?? 'there') }},
+Hello,
 
 {{ $bodyCopy }}
 

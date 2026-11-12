@@ -23,7 +23,7 @@ class WritingDeadlineReminderMail extends PlatformMailable
 
     public function build()
     {
-        return $this->subject('Writing deadline soon — order #'.$this->order->order_number)
+        return $this->subject($this->siteNamedSubject('Writing deadline soon on {site}', $this->order, $this->item))
             ->markdown('emails.writing.deadline-reminder', [
                 'firstName' => $this->firstName($this->recipient),
                 'orderNumber' => $this->order->order_number,

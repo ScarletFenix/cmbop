@@ -48,6 +48,7 @@ use App\Mail\OrderApprovedByAdvertiser;
 use App\Mail\OrderPaymentConfirmed;
 use App\Mail\OrderRejected;
 use App\Mail\OrderStatusChanged;
+use App\Mail\PackProgressMail;
 use App\Mail\PartnerCorrectionMail;
 use App\Mail\PartnerEmailChangeCancelMail;
 use App\Mail\PartnerEmailChangeConfirmMail;
@@ -91,6 +92,7 @@ use App\Models\Invoice;
 use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\OrderItemDispute;
+use App\Models\OrderPack;
 use App\Models\PartnerEmailChangeRequest;
 use App\Models\ProblemReport;
 use App\Models\SavedSearch;
@@ -295,6 +297,13 @@ class EmailCatalog
                 'description' => 'Advertiser notified when the guest post goes live.',
                 'category' => 'Orders',
                 'mailable' => LiveUrlSubmitted::class,
+                'status' => 'active',
+            ],
+            'pack_progress' => [
+                'name' => 'Pack Progress',
+                'description' => 'Advertiser update when a pack of guest posts publishes another article.',
+                'category' => 'Orders',
+                'mailable' => PackProgressMail::class,
                 'status' => 'active',
             ],
             'link_guarantee_restore' => [
@@ -835,6 +844,7 @@ class EmailCatalog
             'withdrawal request received' => 'withdrawal_requested_confirmation',
             'withdrawal request ' => 'withdrawal_status',
             'new order for your site' => 'publisher_new_order',
+            'new order for ' => 'publisher_new_order',
             'new order ' => 'partner_new_order',
             'correction requested for order' => 'partner_correction',
             'new message on order' => 'partner_thread_message',
@@ -844,17 +854,27 @@ class EmailCatalog
             'reset your seolinkbuildings partner password' => 'partner_password_reset',
             'manual payment required' => 'admin_manual_payment',
             'order accepted -' => 'order_accepted',
+            'accepted your order' => 'order_accepted',
             'order rejected -' => 'order_rejected',
+            'did not accept your order' => 'order_rejected',
             'order approved by advertiser' => 'order_completed',
+            'article approved on' => 'order_completed',
             'live url submitted' => 'live_url_submitted',
+            'your article is live on' => 'live_url_submitted',
+            'order placed for' => 'order_payment_confirmed',
+            'pack of' => 'pack_progress',
             'ready for review' => 'order_status_changed',
             'restore the live link' => 'link_guarantee_restore',
             'article ready for approval' => 'article_ready_for_approval',
             'article ready to publish' => 'article_approved_for_publish',
             'revision requested — order' => 'article_revision_requested',
             'writing deadline soon' => 'writing_deadline_reminder',
+            'due soon: publish on' => 'publisher_publish_nudge',
+            'overdue: publish on' => 'publisher_publish_nudge',
+            'a paid order is waiting on' => 'publisher_accept_nudge',
             'new sites match' => 'saved_search_alert',
             'modification requested for order' => 'modification_requested',
+            'correction requested on' => 'modification_requested',
             'publisher requested a revised article' => 'content_revision_requested',
             'revised article ready' => 'content_revision_fulfilled',
             'your article was approved' => 'content_evaluation_result',
@@ -911,6 +931,7 @@ class EmailCatalog
             'needs publishing' => 'publisher_publish_nudge',
             'your link is live' => 'advertiser_review_nudge',
             '1 day left to review order' => 'auto_approve_reminder',
+            '1 day left to review ' => 'auto_approve_reminder',
             'we are chasing your order' => 'advertiser_order_stalled',
             '[admin] order' => 'admin_stalled_order',
             'new advertiser registered' => 'admin_new_user',
@@ -921,6 +942,7 @@ class EmailCatalog
             'new sites just added' => 'new_sites_digest',
             'new sites match your placements' => 'weekly_new_sites',
             'a new site matches your placements' => 'weekly_new_sites',
+            'new sites in your niches' => 'weekly_new_sites',
             'weekly activity summary' => 'weekly_activity_summary',
             'your spending summary' => 'monthly_spending_summary',
         ];
@@ -976,7 +998,9 @@ class EmailCatalog
                     default => 'Great news — the publisher accepted this order and work can begin.',
                 },
             ),
-            'order_payment_confirmed' => new OrderPaymentConfirmed($order),
+            'order_payment_confirmed' => new OrderPaymentConfirmed(tap($order, function (Order $previewOrder) {
+                $previewOrder->status = 'pending';
+            })),
             'payment_successful_invoice' => new PaymentSuccessfulInvoiceMail(self::sampleTaxInvoice()),
             'payment_failed' => new PaymentFailedMail(self::sampleFailureDocument()),
             'payment_pending' => new PaymentPendingMail($order),
@@ -990,11 +1014,18 @@ class EmailCatalog
             'partner_email_change_confirm' => new PartnerEmailChangeConfirmMail($user, self::samplePartnerEmailChange(), 'preview-confirm-token'),
             'partner_email_change_cancel' => new PartnerEmailChangeCancelMail($user, self::samplePartnerEmailChange(), 'preview-cancel-token'),
             'partner_password_reset' => new PartnerPasswordResetMail($user, 'preview-reset-token'),
-            'order_accepted' => new OrderAccepted($order, $item, $site),
-            'order_rejected' => new OrderRejected($order, $item, $site, 'Sample rejection reason for preview.'),
+            'order_accepted' => new OrderAccepted(tap($order, function (Order $previewOrder) {
+                $previewOrder->status = 'processing';
+            }), $item, $site),
+            'order_rejected' => new OrderRejected(tap($order, function (Order $previewOrder) {
+                $previewOrder->status = 'cancelled';
+            }), $item, $site, 'Sample rejection reason for preview.'),
             'dispute_clawback_publisher' => new DisputeClawbackPublisher(self::sampleDispute(), $user, 100.0, 0.0),
             'dispute_refund_advertiser' => new DisputeRefundAdvertiser(self::sampleDispute(), $user, 115.0),
-            'live_url_submitted' => new LiveUrlSubmitted($order, $item, $site, 'https://example.com/sample-live-url'),
+            'live_url_submitted' => new LiveUrlSubmitted(tap($order, function (Order $previewOrder) {
+                $previewOrder->status = 'review';
+            }), $item, $site, 'https://example-news.de/sample-live-url'),
+            'pack_progress' => new PackProgressMail(self::samplePack($order, $item, $site), $order, false),
             'link_guarantee_restore' => new LinkGuaranteeRestoreMail($user, $order, $item, now()->addDays(7)),
             'article_ready_for_approval' => new ArticleReadyForApprovalMail($user, $order, $item),
             'article_approved_for_publish' => new ArticleApprovedForPublishMail($user, $order, $item),
@@ -1178,8 +1209,8 @@ class EmailCatalog
         $user = self::sampleUser();
         $order = new Order([
             'order_number' => 'ORD-PREVIEW',
-            'total_amount' => 99.00,
-            'subtotal' => 99.00,
+            'total_amount' => 138.00,
+            'subtotal' => 138.00,
             'tax' => 0,
             'payment_status' => 'paid',
             'status' => 'completed',
@@ -1193,6 +1224,7 @@ class EmailCatalog
         $item->order_id = $order->id;
         $order->setRelation('items', collect([$item]));
         $order->created_at = now();
+        $order->paid_at = now();
 
         return $order;
     }
@@ -1201,20 +1233,43 @@ class EmailCatalog
     {
         $item = new OrderItem([
             'site_name' => 'Sample Publisher Site',
-            'site_url' => 'https://example.com',
+            'site_url' => 'https://example-news.de',
             'price' => 138.00,
             'additional_price' => 0,
             'homepage_days' => 7,
             'homepage_price' => 25.00,
             'social_channels' => ['facebook', 'x'],
-            'content_link' => 'https://example.com/content.docx',
-            'live_url' => 'https://example.com/sample-live-url',
+            'content_link' => 'https://example-news.de/content.docx',
+            'live_url' => 'https://example-news.de/sample-live-url',
+            'anchor_text' => 'guest posting marketplace',
+            'target_url' => 'https://advertiser.example/offer',
         ]);
         $item->id = self::PREVIEW_ID;
         $item->exists = false;
+        $item->live_url_submitted_at = now();
         $item->setRelation('site', self::sampleSite());
 
         return $item;
+    }
+
+    protected static function samplePack(Order $order, OrderItem $item, Site $site): OrderPack
+    {
+        $pack = new OrderPack([
+            'user_id' => self::PREVIEW_ID,
+            'site_id' => self::PREVIEW_ID,
+            'reference_code' => 'PACK-PREVIEW',
+            'pack_size' => 2,
+            'status' => OrderPack::STATUS_IN_PROGRESS,
+            'published_count' => 1,
+            'total_amount' => 200,
+        ]);
+        $pack->id = self::PREVIEW_ID;
+        $pack->exists = false;
+        $order->setRelation('items', collect([$item]));
+        $pack->setRelation('site', $site);
+        $pack->setRelation('orders', collect([$order]));
+
+        return $pack;
     }
 
     protected static function sampleDispute(): OrderItemDispute
@@ -1244,8 +1299,9 @@ class EmailCatalog
         $user = self::sampleUser();
         $site = new Site([
             'site_name' => 'Sample Site',
-            'site_url' => 'https://example.com',
-            'domain' => 'example.com',
+            'site_url' => 'https://example-news.de',
+            'domain' => 'example-news.de',
+            'link_type' => 'dofollow',
             'publisher_id' => $user->id,
             'verified' => true,
             'active' => true,
@@ -1378,8 +1434,8 @@ class EmailCatalog
             'invoice_number' => 'INV-PREVIEW-000001',
             'type' => Invoice::TYPE_TAX_INVOICE,
             'status' => Invoice::STATUS_PAID,
-            'total_amount' => 99.00,
-            'subtotal' => 99.00,
+            'total_amount' => 138.00,
+            'subtotal' => 138.00,
             'tax_amount' => 0,
             'currency' => 'EUR',
             'customer_name' => $user->name,
@@ -1401,8 +1457,8 @@ class EmailCatalog
             'invoice_number' => 'RCPT-PREVIEW-000001',
             'type' => Invoice::TYPE_PAYMENT_FAILURE,
             'status' => Invoice::STATUS_FAILED,
-            'total_amount' => 99.00,
-            'subtotal' => 99.00,
+            'total_amount' => 138.00,
+            'subtotal' => 138.00,
             'tax_amount' => 0,
             'currency' => 'EUR',
             'notes' => 'Sample payment failure for preview.',
@@ -1427,8 +1483,8 @@ class EmailCatalog
             'invoice_number' => 'CN-PREVIEW-000001',
             'type' => Invoice::TYPE_REFUND_RECEIPT,
             'status' => Invoice::STATUS_REFUNDED,
-            'total_amount' => 99.00,
-            'subtotal' => 99.00,
+            'total_amount' => 138.00,
+            'subtotal' => 138.00,
             'tax_amount' => 0,
             'currency' => 'EUR',
             'notes' => 'Sample refund for preview.',
@@ -1533,7 +1589,7 @@ class EmailCatalog
 
     protected static function sampleWeeklyNewSitesMail(User $user, Site $site): WeeklyNewSitesDigestMail
     {
-        $site->domain = $site->domain ?: 'example.com';
+        $site->domain = $site->domain ?: 'example-news.de';
         $site->category = $site->category ?: 'Marketing';
         $site->country = $site->country ?: 'gb';
         $site->da = $site->da ?: 42;

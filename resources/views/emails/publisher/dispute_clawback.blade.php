@@ -1,15 +1,15 @@
 @component('mail::message')
 # Placement clawback
 
-Dear {{ $publisher->name }},
+Hello,
 
 A link-removed dispute was upheld for order #{{ $dispute->order?->order_number ?? $dispute->order_id }}.
 
 @if($debited > 0)
-- Debited from your wallet: €{{ number_format($debited, 2) }}
+- Debited from your wallet: {{ \App\Support\MailNotificationPresenter::euro((float) $debited) }}
 @endif
 @if($debtCreated > 0)
-- Outstanding debt: €{{ number_format($debtCreated, 2) }} (withdrawals are blocked until this is cleared)
+- Outstanding debt: {{ \App\Support\MailNotificationPresenter::euro((float) $debtCreated) }} (withdrawals are blocked until this is cleared)
 @endif
 
 @if($dispute->admin_notes)

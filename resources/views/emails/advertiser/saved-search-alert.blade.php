@@ -1,7 +1,7 @@
 @component('mail::message')
 # New sites match “{{ $searchName }}”
 
-Hi {{ $firstName }},
+Hello,
 
 New active listings match the saved catalog search you named {{ $searchName }}:
 

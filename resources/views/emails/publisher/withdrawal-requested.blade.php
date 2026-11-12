@@ -4,7 +4,7 @@
 @endphp
 # Withdrawal request received
 
-Hi {{ $withdrawal->user?->name ?? 'Publisher' }},
+Hello,
 
 We received your withdrawal request WD-{{ $withdrawal->id }}.
 

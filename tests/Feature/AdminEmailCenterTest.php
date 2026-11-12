@@ -265,7 +265,9 @@ class AdminEmailCenterTest extends TestCase
         $this->actingAs($admin)
             ->get(route('admin.emails.preview', 'welcome'))
             ->assertOk()
-            ->assertSee('Welcome aboard, Sample', false);
+            ->assertSee('Welcome aboard', false)
+            ->assertSee('Hello,', false)
+            ->assertDontSee('Welcome aboard, Sample', false);
 
         $this->actingAs($admin)
             ->get(route('admin.emails.preview', 'not-a-real-template'))
@@ -538,7 +540,7 @@ class AdminEmailCenterTest extends TestCase
     {
         $cases = [
             'Welcome to SEOLinkBuildings' => 'welcome',
-            'New Withdrawal Request - €50.00' => 'withdrawal_request',
+            'New Withdrawal Request - €50' => 'withdrawal_request',
             'Withdrawal request received (WD-12)' => 'withdrawal_requested_confirmation',
             'Withdrawal Request Approved' => 'withdrawal_status',
             'Withdrawal Request Completed' => 'withdrawal_status',
@@ -546,14 +548,21 @@ class AdminEmailCenterTest extends TestCase
             'New order #ORD-1 created' => 'order_status_changed',
             'Manual Payment Required - New Order #ORD-1' => 'admin_manual_payment',
             'Order Accepted - #ORD-1' => 'order_accepted',
+            'example-news.de accepted your order' => 'order_accepted',
+            'example-news.de did not accept your order' => 'order_rejected',
             'Payment Confirmed for Order #ORD-1' => 'order_payment_confirmed',
+            'Order placed for example-news.de' => 'order_payment_confirmed',
+            'Your article is live on example-news.de – please review' => 'live_url_submitted',
+            'Correction requested on example-news.de' => 'modification_requested',
+            'New sites in your niches' => 'weekly_new_sites',
+            'New order for example-news.de' => 'publisher_new_order',
             'Payment Successful – Invoice Attached' => 'payment_successful_invoice',
-            'Deposit Approved - €100.00' => 'deposit_approved',
-            'Wallet topped up — €40.00' => 'deposit_approved',
-            'PayPal deposit refunded — €25.00' => 'deposit_refunded',
+            'Deposit Approved - €100' => 'deposit_approved',
+            'Wallet topped up — €40' => 'deposit_approved',
+            'PayPal deposit refunded — €25' => 'deposit_refunded',
             'PayPal payment was not completed' => 'paypal_payment_not_completed',
             'PayPal payment is under review' => 'paypal_payment_not_completed',
-            'New Deposit Request - €100.00' => 'deposit_submitted',
+            'New Deposit Request - €100' => 'deposit_submitted',
             'Your site discount has ended — Sample Site' => 'site_discount_ended',
             'Your payout details were updated' => 'payout_profile_updated',
             'Your article was approved for publication' => 'content_evaluation_result',

@@ -5,12 +5,12 @@
 # Deposit Approved
 @endif
 
-Dear {{ $deposit->user?->name ?? 'Advertiser' }},
+Hello,
 
 @if($isPaypal)
-Your PayPal payment succeeded and €{{ number_format($deposit->amount, 2) }} has been added to your wallet.
+Your PayPal payment succeeded and {{ \App\Support\MailNotificationPresenter::euro((float) $deposit->amount) }} has been added to your wallet.
 @elseif($isCard)
-Your card payment succeeded and €{{ number_format($deposit->amount, 2) }} has been added to your wallet.
+Your card payment succeeded and {{ \App\Support\MailNotificationPresenter::euro((float) $deposit->amount) }} has been added to your wallet.
 @else
 Your deposit request has been approved and the funds have been added to your wallet.
 @if(!empty($approvalFxLine))
@@ -24,7 +24,7 @@ Your deposit receipt PDF is attached.
 
 ## Deposit Details:
 
-- Amount: €{{ number_format($deposit->amount, 2) }}
+- Amount: {{ \App\Support\MailNotificationPresenter::euro((float) $deposit->amount) }}
 - Reference Code: {{ $deposit->reference_code }}
 - Payment method: {{ \App\Models\Invoice::paymentMethodLabel($deposit->payment_method) }}
 @if($isInstant)
@@ -38,7 +38,7 @@ Your deposit receipt PDF is attached.
 
 ## Your Current Balance:
 
-€{{ number_format($walletBalance ?? 0, 2) }}
+{{ \App\Support\MailNotificationPresenter::euro((float) ($walletBalance ?? 0)) }}
 
 @component('mail::button', ['url' => $balanceUrl, 'color' => 'primary'])
 View Balance

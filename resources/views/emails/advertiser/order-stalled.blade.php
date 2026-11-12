@@ -1,7 +1,7 @@
 @component('mail::message')
 # We are chasing your order
 
-Hi {{ $firstName }},
+Hello,
 
 Your guest post on {{ $siteName }} (order #{{ $order->order_number }}) was due on {{ \App\Support\MailNotificationPresenter::formatDateTime($dueAt) }} and is now {{ $daysOverdue }} day(s) late. We would rather tell you than leave you wondering.
 

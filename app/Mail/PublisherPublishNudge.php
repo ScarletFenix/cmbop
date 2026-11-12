@@ -59,14 +59,14 @@ class PublisherPublishNudge extends PlatformMailable
             return $this->rows->count().' orders are waiting to be published';
         }
 
-        $order = $first['order_number'] ?? '';
+        $site = trim((string) ($first['domain'] ?? $first['site_name'] ?? 'your site')) ?: 'your site';
 
         // Stage 1 fires before the deadline, so it must not read as a telling-off.
         return match (true) {
-            $this->stage <= 1 => 'Due soon: publish order #'.$order,
-            $this->stage === 2 => 'Overdue: order #'.$order.' is past its turnaround',
-            $this->stage === 3 => 'Still overdue: order #'.$order,
-            default => 'Final notice: order #'.$order.' needs publishing',
+            $this->stage <= 1 => 'Due soon: publish on '.$site,
+            $this->stage === 2 => 'Overdue: publish on '.$site,
+            $this->stage === 3 => 'Still overdue: publish on '.$site,
+            default => 'Final notice: '.$site.' needs publishing',
         };
     }
 }

@@ -226,12 +226,12 @@ class InvoiceLegalIdentityTest extends TestCase
         $this->assertStringNotContainsString('josen J', $html);
     }
 
-    public function test_invoice_email_and_order_mail_share_legal_footer_without_touching_bill_to(): void
+    public function test_invoice_email_and_order_mail_omit_legal_footer_without_touching_bill_to(): void
     {
         ['invoice' => $invoice] = $this->sampleInvoice();
 
         $mailHtml = (new PaymentSuccessfulInvoiceMail($invoice))->render();
-        $this->assertStringContainsString(LegalIdentity::FOOTER, $mailHtml);
+        $this->assertStringNotContainsString(LegalIdentity::FOOTER, $mailHtml);
         $this->assertStringContainsString('€135.60', $mailHtml);
         $this->assertStringNotContainsString('Partners with', $mailHtml);
 
@@ -243,7 +243,7 @@ class InvoiceLegalIdentityTest extends TestCase
             'processing',
             'review',
         ))->render();
-        $this->assertStringContainsString(LegalIdentity::FOOTER, $statusHtml);
+        $this->assertStringNotContainsString(LegalIdentity::FOOTER, $statusHtml);
         $this->assertStringContainsString('https://inkamagazin.example/guest-post-article', $statusHtml);
         $this->assertStringNotContainsString('Topurlz Ltd', $statusHtml);
     }

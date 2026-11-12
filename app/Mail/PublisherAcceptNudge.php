@@ -33,8 +33,8 @@ class PublisherAcceptNudge extends PlatformMailable
         $siteName = $this->site?->site_name ?: ($this->orderItem->site_name ?: 'your site');
 
         $subject = $this->stage >= 3
-            ? 'Action needed: order #'.$this->order->order_number.' is still unaccepted'
-            : 'A paid order is waiting on you — #'.$this->order->order_number;
+            ? $this->siteNamedSubject('Action needed on {site}', $this->order, $this->orderItem, $this->site)
+            : $this->siteNamedSubject('A paid order is waiting on {site}', $this->order, $this->orderItem, $this->site);
 
         return $this->subject($subject)
             ->markdown('emails.publisher.accept-nudge', [

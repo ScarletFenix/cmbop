@@ -8,11 +8,15 @@ use App\Models\EmailLog;
 use App\Models\EmailNotificationPreference;
 use App\Models\EmailNotificationSetting;
 use App\Models\Invoice;
+use App\Models\Order;
+use App\Models\OrderItem;
 use App\Models\User;
 use App\Services\Billing\InvoicePdfGenerator;
 use App\Services\Wallet\WelcomeBonusService;
 use App\Support\EmailCatalog;
 use App\Support\MailAddress;
+use App\Support\MailNotificationPresenter;
+use App\Support\TransactionalMailTheme;
 use Carbon\Carbon;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -72,6 +76,26 @@ abstract class PlatformMailable extends Mailable implements ShouldQueue
         $this->onConnection(static::resolveQueueConnection());
         $this->onQueue(config('email_notifications.queue', 'emails'));
         $this->queuedAt = now()->toIso8601String();
+    }
+
+    /**
+     * Bind the shared transactional chrome before HTML or text views render.
+     * The mail::message component does not inherit parent view data, so the
+     * theme is stored on the container for the layout partials to read.
+     */
+    public function buildViewData()
+    {
+        $data = parent::buildViewData();
+        $user = $this->recipientUser
+            ?? (($data['user'] ?? null) instanceof User ? $data['user'] : null)
+            ?? (($data['advertiser'] ?? null) instanceof User ? $data['advertiser'] : null);
+        $order = ($data['order'] ?? null) instanceof Order ? $data['order'] : null;
+        MailNotificationPresenter::bindMailTimezone($user, $order);
+        $theme = TransactionalMailTheme::fromViewData($data);
+        $data['mailTheme'] = $theme;
+        app()->instance('transactional.mailTheme', $theme);
+
+        return $data;
     }
 
     /**
@@ -485,6 +509,17 @@ abstract class PlatformMailable extends Mailable implements ShouldQueue
         $parts = preg_split('/\s+/', $name) ?: ['there'];
 
         return $parts[0] ?: 'there';
+    }
+
+    protected function siteNamedSubject(string $template, mixed $order = null, mixed $item = null, mixed $site = null): string
+    {
+        $label = MailNotificationPresenter::orderSiteHeadline(
+            $order instanceof Order ? $order : null,
+            $item instanceof OrderItem ? $item : null,
+            is_object($site) ? $site : null,
+        );
+
+        return str_replace('{site}', $label, $template);
     }
 
     /**

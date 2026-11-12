@@ -172,9 +172,11 @@ class WeeklyNewSitesDigestTest extends TestCase
             ->assertOk()
             ->assertSee('New sites in your niches', false)
             ->assertSee('SEOLinkBuildings', false)
-            ->assertSee('Manage new-site email preferences', false)
-            ->assertSee('Unsubscribe from this digest', false)
-            ->assertSee('Preview card for', false)
+            ->assertSee('Notification settings', false)
+            ->assertSee('Unsubscribe', false)
+            ->assertDontSee('Preview card for', false)
+            ->assertSee('Matched on: Marketing · United Kingdom', false)
+            ->assertSee('Hello,', false)
             ->assertDontSee('Teqno Ltd', false)
             ->assertDontSee('17392540', false)
             ->assertDontSee('trading as', false)
@@ -552,12 +554,12 @@ class WeeklyNewSitesDigestTest extends TestCase
         Mail::assertQueued(WeeklyNewSitesDigestMail::class, function (WeeklyNewSitesDigestMail $mail) use ($publisher) {
             $html = $mail->render();
             $this->assertStringContainsString('priced-a.example', $html);
-            $this->assertStringContainsString('View site details', $html);
+            $this->assertStringContainsString('View site', $html);
             $this->assertStringContainsString('Browse matching sites', $html);
             $this->assertStringContainsString('SEOLinkBuildings', $html);
-            $this->assertStringContainsString('Manage new-site email preferences', $html);
-            $this->assertStringContainsString('Unsubscribe from this digest', $html);
-            $this->assertStringContainsString('contact support', strtolower($html));
+            $this->assertStringContainsString('Notification settings', $html);
+            $this->assertStringContainsString('Unsubscribe', $html);
+            $this->assertStringContainsString('support@seolinkbuildings.com', strtolower($html));
             $this->assertStringNotContainsString('Teqno', $html);
             $this->assertStringNotContainsString('17392540', $html);
             $this->assertStringNotContainsString('trading as', $html);
@@ -584,8 +586,8 @@ class WeeklyNewSitesDigestTest extends TestCase
             ])->render();
             $this->assertStringContainsString('priced-a.example', $text);
             $this->assertStringContainsString('SEOLinkBuildings', $text);
-            $this->assertStringContainsString('Manage new-site email preferences', $text);
-            $this->assertStringContainsString('Unsubscribe from this digest', $text);
+            $this->assertStringContainsString('Notification settings:', $text);
+            $this->assertStringContainsString('Unsubscribe:', $text);
             $this->assertStringNotContainsString('Teqno', $text);
             $this->assertStringNotContainsString('17392540', $text);
             $this->assertStringNotContainsString('20 Wenlock Road', $text);

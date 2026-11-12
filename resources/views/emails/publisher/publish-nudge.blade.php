@@ -2,7 +2,7 @@
 @if($batched)
 # {{ $rows->count() }} orders are waiting to be published
 
-Hi {{ $firstName }},
+Hello,
 
 These accepted orders are past the turnaround time listed on your sites:
 
@@ -10,25 +10,25 @@ These accepted orders are past the turnaround time listed on your sites:
 | Order | Site | Was due | Payout |
 | :--- | :--- | :--- | ---: |
 @foreach($rows as $row)
-| #{{ $row['order_number'] }} | {{ $row['site_name'] }} | {{ $row['due_at']->format('j M') }} ({{ $row['overdue_label'] }}) | €{{ number_format($row['payout'], 2) }} |
+| #{{ $row['order_number'] }} | {{ $row['site_name'] }} | {{ $row['due_at']->format('j M') }} ({{ $row['overdue_label'] }}) | {{ \App\Support\MailNotificationPresenter::euro((float) $row['payout']) }} |
 @endforeach
 @endcomponent
 
-Total waiting to be released: €{{ number_format($rows->sum('payout'), 2) }}.
+Total waiting to be released: {{ \App\Support\MailNotificationPresenter::euro((float) $rows->sum('payout')) }}.
 @else
 @php($row = $rows->first())
 # {{ $stage <= 1 ? 'Due soon: order #'.$row['order_number'] : 'Order #'.$row['order_number'].' is overdue' }}
 
-Hi {{ $firstName }},
+Hello,
 
 @if($stage <= 1)
 Your guest post for {{ $row['site_name'] }} is due {{ $row['due_at']->format('j M, H:i') }} — that is the {{ $row['promised'] }} turnaround listed on the site.
 
-Publishing on time is the single biggest driver of repeat orders, and €{{ number_format($row['payout'], 2) }} is released as soon as the advertiser approves the live link.
+Publishing on time is the single biggest driver of repeat orders, and {{ \App\Support\MailNotificationPresenter::euro((float) $row['payout']) }} is released as soon as the advertiser approves the live link.
 @else
 Your guest post for {{ $row['site_name'] }} was due {{ $row['due_at']->format('j M, H:i') }} — that is {{ $row['overdue_label'] }}, against the {{ $row['promised'] }} turnaround you listed.
 
-The advertiser is waiting, and €{{ number_format($row['payout'], 2) }} stays on hold until the live link is submitted.
+The advertiser is waiting, and {{ \App\Support\MailNotificationPresenter::euro((float) $row['payout']) }} stays on hold until the live link is submitted.
 @endif
 @endif
 

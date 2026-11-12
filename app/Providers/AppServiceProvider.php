@@ -24,6 +24,7 @@ use App\Support\MarketingOpsQueues;
 use App\Support\OrderLifecycleMailSuppressor;
 use App\Support\PartnerDashboard;
 use App\Support\PublicStorageLink;
+use App\Support\TransactionalMailTheme;
 use Illuminate\Auth\Events\Login;
 use Illuminate\Auth\Events\Logout;
 use Illuminate\Auth\Middleware\RedirectIfAuthenticated;
@@ -81,6 +82,20 @@ class AppServiceProvider extends ServiceProvider
         // zip deploys often keep compiled PHP newer than the Blade source.
         Blade::setEchoFormat('blade_e(%s)');
         $this->forgetStaleBladeEchoCache();
+
+        View::composer([
+            'emails.layouts.transactional',
+            'vendor.mail.html.message',
+            'vendor.mail.text.message',
+        ], function ($view) {
+            if (! app()->bound('transactional.mailTheme')) {
+                return;
+            }
+            $data = $view->getData();
+            if (! isset($data['mailTheme']) || ! $data['mailTheme'] instanceof TransactionalMailTheme) {
+                $view->with('mailTheme', app('transactional.mailTheme'));
+            }
+        });
 
         // App shells use Bootstrap, not Tailwind. Laravel's default Tailwind
         // pagination SVGs render as giant arrows when w-5/h-5/hidden utilities

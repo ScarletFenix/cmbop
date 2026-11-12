@@ -5,6 +5,7 @@
 namespace App\Mail;
 
 use App\Models\User;
+use App\Support\MailNotificationPresenter;
 
 class SiteOwnerOrderNotification extends PlatformMailable
 {
@@ -22,6 +23,8 @@ class SiteOwnerOrderNotification extends PlatformMailable
         $this->publisher = $site->relationLoaded('publisher') && $site->publisher
             ? $site->publisher
             : User::find($site->publisher_id);
+        $this->notificationType = 'publisher_new_order';
+        $this->recipientUser = $this->publisher instanceof User ? $this->publisher : null;
     }
 
     public function build()
@@ -51,7 +54,10 @@ class SiteOwnerOrderNotification extends PlatformMailable
             }
         }
 
-        return $this->subject('New Order for Your Site: '.$this->site->site_name)
+        $domain = MailNotificationPresenter::bareHost($this->site->domain ?? $this->site->site_url)
+            ?: trim((string) ($this->site->site_name ?? 'your site'));
+
+        return $this->subject('New order for '.$domain)
             ->markdown('emails.site-owner-order-notification')
             ->with([
                 'site' => $this->site,

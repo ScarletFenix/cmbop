@@ -1,6 +1,6 @@
 @component('mail::message')
 
-Hello {{ $receiverName }},
+Hello,
 
 You have received a new message from {{ $sender->name }} ({{ $senderType }}) regarding order #{{ $order->order_number }}.
 

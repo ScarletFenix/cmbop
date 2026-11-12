@@ -5,7 +5,7 @@
 # Ready when you are
 @endif
 
-Hi {{ $firstName }},
+Hello,
 
 You've been on {{ $brand['name'] ?? config('app.name') }} for a week.@if(!empty($welcomeBonusEuro)) Your advertiser wallet already includes {{ $welcomeBonusEuro }} welcome credit toward guest posts on verified publishers.@endif
 

@@ -1,5 +1,5 @@
 @component('mail::message')
-Hello {{ $partnerName }},
+Hello,
 
 Use this button to choose a new password for the SEOLinkBuildings partner dashboard.
 
@@ -9,5 +9,5 @@ Reset password
 
 If you did not request this, you can ignore the email.
 
-Teqno Ltd · SEOLinkBuildings partner desk
+SEOLinkBuildings partner desk
 @endcomponent

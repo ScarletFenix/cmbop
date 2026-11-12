@@ -1,5 +1,7 @@
 @component('mail::message')
-# Your temporary password, {{ $firstName }}
+Hello,
+
+Your temporary password.
 
 You signed up with Google on {{ $brand['name'] ?? config('app.name') }}. We created a temporary password so you can also sign in with email and password (or change it later in Profile).
 

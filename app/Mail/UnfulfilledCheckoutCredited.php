@@ -6,6 +6,7 @@ use App\Models\Invoice;
 use App\Models\User;
 use App\Models\Wallet;
 use App\Support\EmailCatalog;
+use App\Support\MailNotificationPresenter;
 
 class UnfulfilledCheckoutCredited extends PlatformMailable
 {
@@ -25,7 +26,7 @@ class UnfulfilledCheckoutCredited extends PlatformMailable
 
     public function build()
     {
-        $amount = number_format(round($this->amount, 2), 2);
+        $amount = ltrim(MailNotificationPresenter::euro(round($this->amount, 2)), '€');
         $method = strtolower(trim($this->paymentMethod));
         $methodLabel = Invoice::paymentMethodLabel($method);
         $balance = $this->walletBalance;

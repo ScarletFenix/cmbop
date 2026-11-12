@@ -1,5 +1,5 @@
 @component('mail::message')
-Hello {{ $partnerName }},
+Hello,
 
 A new message arrived on order **{{ $orderNumber }}** ({{ $domain }}).
 
@@ -13,5 +13,5 @@ Open the order to reply. Replies by email are not delivered.
 Open order
 @endcomponent
 
-Teqno Ltd · SEOLinkBuildings partner desk
+SEOLinkBuildings partner desk
 @endcomponent

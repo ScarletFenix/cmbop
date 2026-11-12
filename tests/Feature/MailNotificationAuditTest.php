@@ -116,29 +116,31 @@ class MailNotificationAuditTest extends TestCase
             'review',
         ))->render();
 
-        $this->assertStringContainsString('Ready for review', $html);
-        $this->assertStringContainsString('Inka Magazin', $html);
+        $this->assertStringContainsString('Your article is live on inkamagazin.example', $html);
         $this->assertStringContainsString('inkamagazin.example', $html);
         $this->assertStringContainsString($longUrl, $html);
         $this->assertStringContainsString('href="'.$longUrl.'"', $html);
         $this->assertStringContainsString('#ORD-MAIL-1', $html);
         $this->assertStringContainsString('In review', $html);
-        $this->assertStringContainsString('View Order Details', $html);
+        $this->assertStringContainsString('Approve article', $html);
+        $this->assertStringContainsString('Request corrections', $html);
         $this->assertStringContainsString('approve it or request corrections', $html);
         $this->assertTrue(
-            str_contains($html, 'word-break:break-all') || str_contains($html, 'word-break: break-all'),
-            'Long live URLs should wrap with word-break: break-all'
+            str_contains($html, 'word-break:normal') || str_contains($html, 'word-break: normal'),
+            'Live URLs should not break mid-word'
         );
+        $this->assertStringNotContainsString('word-break:break-all', $html);
         $this->assertMatchesRegularExpression('/\b(UTC|GMT)\b/', $html);
-        $this->assertStringContainsString('Hello Arslan', $html);
+        $this->assertStringContainsString('Hello,', $html);
+        $this->assertStringNotContainsString('Hello Arslan', $html);
         $this->assertStringNotContainsString('>Advertiser<', $html);
         $this->assertStringNotContainsString('josen J', $html);
         $this->assertStringNotContainsString('Payment Status', $html);
         $this->assertStringNotContainsString('Payment status', $html);
         $this->assertStringNotContainsString('€135.60', $html);
-        $this->assertStringNotContainsString('reply to this email', $html);
         $this->assertStringNotContainsString('/advertiser/orders/approve', $html);
-        $this->assertStringContainsString(LegalIdentity::footer(), $html);
+        $this->assertStringNotContainsString(LegalIdentity::footer(), $html);
+        $this->assertStringNotContainsString('Teqno Ltd', $html);
         $this->assertStringNotContainsString('Partners with', $html);
     }
 
@@ -160,7 +162,7 @@ class MailNotificationAuditTest extends TestCase
         $adminHtml = (new OrderStatusChanged($fresh, $this->admin, 'admin', 'status', 'pending', 'processing'))->render();
 
         foreach ([$publisherHtml, $adminHtml] as $html) {
-            $this->assertStringContainsString('Inka Magazin', $html);
+            $this->assertStringContainsString('inkamagazin.example', $html);
             $this->assertStringContainsString('#ORD-MAIL-1', $html);
             $this->assertStringNotContainsString('Arslan', $html);
             $this->assertStringNotContainsString('>Advertiser<', $html);
@@ -236,7 +238,8 @@ class MailNotificationAuditTest extends TestCase
         ))->render();
 
         $this->assertStringContainsString('https://one.example/live-one', $html);
-        $this->assertStringContainsString('Site Two', $html);
+        $this->assertStringContainsString('2 sites', $html);
+        $this->assertStringContainsString('two.example', $html);
         $this->assertStringContainsString('Not submitted yet', $html);
         $this->assertStringNotContainsString('https://two.example/live-one', $html);
     }
@@ -257,13 +260,14 @@ class MailNotificationAuditTest extends TestCase
 
         $reviewHtml = (new LiveUrlSubmitted($order->fresh(), $item, $site, $item->live_url))->render();
         $this->assertStringContainsString('https://inkamagazin.example/post', $reviewHtml);
-        $this->assertStringContainsString('View Order Details', $reviewHtml);
+        $this->assertStringContainsString('Approve article', $reviewHtml);
         $this->assertStringNotContainsString('€135.60', $reviewHtml);
         $this->assertStringNotContainsString('josen J', $reviewHtml);
 
         $paymentHtml = (new OrderPaymentConfirmed($order->fresh(['user', 'items'])))->render();
         $this->assertStringContainsString('€135.60', $paymentHtml);
-        $this->assertStringContainsString('Payment confirmed', $paymentHtml);
+        $this->assertStringContainsString('has been confirmed', $paymentHtml);
+        $this->assertStringContainsString('Order placed', $paymentHtml);
         $this->assertStringNotContainsString('🎉', $paymentHtml);
         $this->assertMatchesRegularExpression('/\b(UTC|GMT)\b/', $paymentHtml);
     }
@@ -370,7 +374,8 @@ class MailNotificationAuditTest extends TestCase
 
         $html = (new PaymentSuccessfulInvoiceMail($invoice->fresh(['user', 'order'])))->render();
         $this->assertStringContainsString('€135.60', $html);
-        $this->assertStringContainsString(LegalIdentity::footer(), $html);
+        $this->assertStringNotContainsString(LegalIdentity::footer(), $html);
+        $this->assertStringNotContainsString('Teqno Ltd', $html);
         $this->assertStringNotContainsString('Partners with', $html);
         $this->assertMatchesRegularExpression('/\b(UTC|GMT)\b/', $html);
     }

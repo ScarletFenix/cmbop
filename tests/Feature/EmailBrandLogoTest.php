@@ -72,9 +72,8 @@ class EmailBrandLogoTest extends TestCase
 
         $html = (new WelcomeEmail($user))->render();
 
-        $this->assertStringContainsString('email-logo.png', $html);
+        $this->assertStringContainsString('assets/img/logo1.png', $html);
         $this->assertStringContainsString('seolinkbuildings.com', $html);
-        $this->assertStringNotContainsString('assets/img/logo1.png', $html);
         $this->assertStringNotContainsString('laravel.com/img/notification-logo', $html);
         $this->assertStringNotContainsString('width: 75px', $html);
 

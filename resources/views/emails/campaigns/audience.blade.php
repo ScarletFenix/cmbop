@@ -1,5 +1,5 @@
 @component('mail::message')
-# Hello {{ $firstName }},
+Hello,
 
 {!! $bodyHtml !!}
 

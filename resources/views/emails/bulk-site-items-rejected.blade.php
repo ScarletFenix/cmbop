@@ -1,7 +1,7 @@
 @component('mail::message')
 # We did not add {{ $count === 1 ? 'a site' : 'some sites' }} from your bulk request
 
-Hi {{ $firstName }},
+Hello,
 
 We did not add {{ $count === 1 ? 'this website' : 'these websites' }} from bulk request #{{ $bulkRequest->id }}:
 

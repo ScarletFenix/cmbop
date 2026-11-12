@@ -1,7 +1,7 @@
 <x-mail::message>
 # Your discount has ended
 
-Hi {{ $publisher->name ?? 'there' }},
+Hello,
 
 Your configured timed discount on {{ $site->site_name }}
 @if($percent)

@@ -14,6 +14,7 @@ class DepositRejected extends PlatformMailable
     {
         parent::__construct();
         $this->deposit = $deposit;
+        $this->notificationType = 'deposit_rejected';
     }
 
     public function build()

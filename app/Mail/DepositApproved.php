@@ -8,6 +8,7 @@ use App\Models\Wallet;
 use App\Services\Billing\DepositReceiptService;
 use App\Support\DepositFx;
 use App\Support\EmailCatalog;
+use App\Support\MailNotificationPresenter;
 
 class DepositApproved extends PlatformMailable
 {
@@ -40,12 +41,12 @@ class DepositApproved extends PlatformMailable
         $isCard = $method === 'card';
         $isPaypal = $method === 'paypal';
         $isInstant = $isCard || $isPaypal;
-        $amount = number_format((float) $deposit->amount, 2);
+        $amount = MailNotificationPresenter::euro((float) $deposit->amount);
         $receipt = $this->resolveReceipt($deposit);
 
         $subject = $isInstant
-            ? 'Wallet topped up — €'.$amount
-            : 'Deposit Approved - €'.$amount;
+            ? 'Wallet topped up — '.$amount
+            : 'Deposit Approved - '.$amount;
 
         $advertiserWallet = null;
         if ($deposit->user && ! EmailCatalog::isPreviewUser($deposit->user)) {
