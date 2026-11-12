@@ -2,7 +2,7 @@
 @if($batched)
 # {{ $rows->count() }} orders are waiting to be published
 
-Hi {{ $firstName }},
+Hello,
 
 These accepted orders are past the turnaround time listed on your sites:
 
@@ -19,7 +19,7 @@ Total waiting to be released: €{{ number_format($rows->sum('payout'), 2) }}.
 @php($row = $rows->first())
 # {{ $stage <= 1 ? 'Due soon: order #'.$row['order_number'] : 'Order #'.$row['order_number'].' is overdue' }}
 
-Hi {{ $firstName }},
+Hello,
 
 @if($stage <= 1)
 Your guest post for {{ $row['site_name'] }} is due {{ $row['due_at']->format('j M, H:i') }} — that is the {{ $row['promised'] }} turnaround listed on the site.

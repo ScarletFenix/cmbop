@@ -1,5 +1,5 @@
 @component('mail::message')
-Hello {{ $partnerName }},
+Hello,
 
 A correction was requested for order **{{ $orderNumber }}** on **{{ $domain }}**.
 

@@ -963,7 +963,7 @@ return [
 
     'publisher_onboard_subject' => 'Review websites we added for you on :app',
     'publisher_onboard_heading' => 'Your publisher account is ready',
-    'publisher_onboard_hi' => 'Hi :name,',
+    'publisher_onboard_hi' => 'Hello,',
     'publisher_onboard_intro_new' => 'Our team created your :app publisher account and added website listings for you to review.',
     'publisher_onboard_intro_existing' => 'Our team added website listings to your :app publisher account.',
     'publisher_onboard_sites' => '{0} No listings were attached.|{1} 1 website is waiting:|[2,*] :count websites are waiting:',

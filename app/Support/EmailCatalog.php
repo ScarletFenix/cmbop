@@ -986,7 +986,9 @@ class EmailCatalog
                     default => 'Great news — the publisher accepted this order and work can begin.',
                 },
             ),
-            'order_payment_confirmed' => new OrderPaymentConfirmed($order),
+            'order_payment_confirmed' => new OrderPaymentConfirmed(tap($order, function (Order $previewOrder) {
+                $previewOrder->status = 'pending';
+            })),
             'payment_successful_invoice' => new PaymentSuccessfulInvoiceMail(self::sampleTaxInvoice()),
             'payment_failed' => new PaymentFailedMail(self::sampleFailureDocument()),
             'payment_pending' => new PaymentPendingMail($order),
@@ -1000,11 +1002,17 @@ class EmailCatalog
             'partner_email_change_confirm' => new PartnerEmailChangeConfirmMail($user, self::samplePartnerEmailChange(), 'preview-confirm-token'),
             'partner_email_change_cancel' => new PartnerEmailChangeCancelMail($user, self::samplePartnerEmailChange(), 'preview-cancel-token'),
             'partner_password_reset' => new PartnerPasswordResetMail($user, 'preview-reset-token'),
-            'order_accepted' => new OrderAccepted($order, $item, $site),
-            'order_rejected' => new OrderRejected($order, $item, $site, 'Sample rejection reason for preview.'),
+            'order_accepted' => new OrderAccepted(tap($order, function (Order $previewOrder) {
+                $previewOrder->status = 'processing';
+            }), $item, $site),
+            'order_rejected' => new OrderRejected(tap($order, function (Order $previewOrder) {
+                $previewOrder->status = 'cancelled';
+            }), $item, $site, 'Sample rejection reason for preview.'),
             'dispute_clawback_publisher' => new DisputeClawbackPublisher(self::sampleDispute(), $user, 100.0, 0.0),
             'dispute_refund_advertiser' => new DisputeRefundAdvertiser(self::sampleDispute(), $user, 115.0),
-            'live_url_submitted' => new LiveUrlSubmitted($order, $item, $site, 'https://example.com/sample-live-url'),
+            'live_url_submitted' => new LiveUrlSubmitted(tap($order, function (Order $previewOrder) {
+                $previewOrder->status = 'review';
+            }), $item, $site, 'https://example.com/sample-live-url'),
             'pack_progress' => new PackProgressMail(self::samplePack($order, $item, $site), $order, false),
             'link_guarantee_restore' => new LinkGuaranteeRestoreMail($user, $order, $item, now()->addDays(7)),
             'article_ready_for_approval' => new ArticleReadyForApprovalMail($user, $order, $item),
@@ -1189,8 +1197,8 @@ class EmailCatalog
         $user = self::sampleUser();
         $order = new Order([
             'order_number' => 'ORD-PREVIEW',
-            'total_amount' => 99.00,
-            'subtotal' => 99.00,
+            'total_amount' => 138.00,
+            'subtotal' => 138.00,
             'tax' => 0,
             'payment_status' => 'paid',
             'status' => 'completed',
@@ -1204,6 +1212,7 @@ class EmailCatalog
         $item->order_id = $order->id;
         $order->setRelation('items', collect([$item]));
         $order->created_at = now();
+        $order->paid_at = now();
 
         return $order;
     }
@@ -1412,8 +1421,8 @@ class EmailCatalog
             'invoice_number' => 'INV-PREVIEW-000001',
             'type' => Invoice::TYPE_TAX_INVOICE,
             'status' => Invoice::STATUS_PAID,
-            'total_amount' => 99.00,
-            'subtotal' => 99.00,
+            'total_amount' => 138.00,
+            'subtotal' => 138.00,
             'tax_amount' => 0,
             'currency' => 'EUR',
             'customer_name' => $user->name,
@@ -1435,8 +1444,8 @@ class EmailCatalog
             'invoice_number' => 'RCPT-PREVIEW-000001',
             'type' => Invoice::TYPE_PAYMENT_FAILURE,
             'status' => Invoice::STATUS_FAILED,
-            'total_amount' => 99.00,
-            'subtotal' => 99.00,
+            'total_amount' => 138.00,
+            'subtotal' => 138.00,
             'tax_amount' => 0,
             'currency' => 'EUR',
             'notes' => 'Sample payment failure for preview.',
@@ -1461,8 +1470,8 @@ class EmailCatalog
             'invoice_number' => 'CN-PREVIEW-000001',
             'type' => Invoice::TYPE_REFUND_RECEIPT,
             'status' => Invoice::STATUS_REFUNDED,
-            'total_amount' => 99.00,
-            'subtotal' => 99.00,
+            'total_amount' => 138.00,
+            'subtotal' => 138.00,
             'tax_amount' => 0,
             'currency' => 'EUR',
             'notes' => 'Sample refund for preview.',

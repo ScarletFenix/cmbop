@@ -4,7 +4,7 @@
 @endphp
 # Deposit Request Update
 
-Dear {{ $deposit->user?->name ?? 'Advertiser' }},
+Hello,
 
 We regret to inform you that your deposit request has been rejected.
 

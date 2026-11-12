@@ -1,7 +1,7 @@
 @component('mail::message')
 # {{ $count }} websites are waiting for your acceptance
 
-Hi {{ $publisherName }},
+Hello,
 
 Our team added {{ $count }} {{ $count === 1 ? 'website' : 'websites' }} to your account. Please review them and accept each one so they appear in your My Sites list.
 

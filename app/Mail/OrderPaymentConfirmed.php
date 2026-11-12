@@ -48,7 +48,9 @@ class OrderPaymentConfirmed extends PlatformMailable
                 'totalAmount' => $this->totalAmount,
                 'orderItems' => $this->orderItems,
                 'orderDate' => MailNotificationPresenter::formatDateTime($this->order->created_at),
-                'paidDate' => MailNotificationPresenter::formatDateTime(now()),
+                'paidDate' => MailNotificationPresenter::formatDateTime($this->order->paid_at ?: now()),
+                'detailRows' => MailNotificationPresenter::orderPlacedDetailRows($this->order, $this->totalAmount),
+                'itemCards' => MailNotificationPresenter::orderPlacedItemCards($this->orderItems ?? []),
             ]);
     }
 }

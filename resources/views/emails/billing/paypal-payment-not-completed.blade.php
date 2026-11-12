@@ -5,7 +5,7 @@
 # PayPal payment was not completed
 @endif
 
-Dear {{ $user->name ?? 'Advertiser' }},
+Hello,
 
 @if($pending)
 PayPal is still reviewing this payment. No guest-post order has been created and your wallet has not been credited yet. We will email you again when the payment completes or fails.

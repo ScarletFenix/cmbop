@@ -1,19 +1,21 @@
 @php
-    $rows = $rows ?? [];
+    $rows = \App\Support\MailNotificationPresenter::filledMailRows($rows ?? []);
 @endphp
 @if(!empty($rows))
-<table class="mail-summary" width="100%" cellpadding="0" cellspacing="0" role="presentation" style="border-collapse:collapse;margin:16px 0 8px;width:100%;">
-@foreach($rows as $row)
+<table class="mail-details mail-summary" width="100%" cellpadding="0" cellspacing="0" role="presentation" style="border-collapse:collapse;margin:16px 0 8px;width:100%;background-color:#f7fafb;font-family:Arial,Helvetica,sans-serif;">
+@foreach($rows as $index => $row)
 @php
     $label = (string) ($row['label'] ?? '');
-    $value = (string) ($row['value'] ?? '—');
+    $value = (string) ($row['value'] ?? '');
     $url = $row['url'] ?? null;
+    $last = $index === array_key_last($rows);
+    $border = $last ? '' : 'border-bottom:1px solid #e4e4e7;';
 @endphp
 <tr>
-<td class="mail-summary-label" valign="top" style="width:38%;padding:10px 14px 10px 0;color:#1a585e;font-size:14px;font-weight:600;line-height:1.4;vertical-align:top;border-bottom:1px solid #e4e4e7;">{{ $label }}</td>
-<td class="mail-summary-value" valign="top" style="padding:10px 0;color:#334155;font-size:14px;line-height:1.5;vertical-align:top;border-bottom:1px solid #e4e4e7;word-break:break-word;overflow-wrap:anywhere;">
+<td class="mail-summary-label" valign="top" style="width:38%;padding:10px 14px 10px 0;color:#1a585e;font-family:Arial,Helvetica,sans-serif;font-size:14px;font-weight:600;line-height:1.4;vertical-align:top;{{ $border }}">{{ $label }}</td>
+<td class="mail-summary-value" valign="top" style="padding:10px 0;color:#334155;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:1.5;vertical-align:top;{{ $border }}word-break:break-word;overflow-wrap:anywhere;">
 @if(filled($url))
-<a class="mail-url" href="{{ $url }}" style="color:#1a585e;word-break:break-all;overflow-wrap:anywhere;">{{ $value }}</a>
+<a class="mail-url" href="{{ $url }}" style="color:#1a585e;word-break:break-all;overflow-wrap:anywhere;">{{ $value !== '' ? $value : $url }}</a>
 @else
 {{ $value }}
 @endif

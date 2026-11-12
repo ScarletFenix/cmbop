@@ -6,7 +6,7 @@
 @endphp
 # Withdrawal Request {{ ucfirst($newStatus) }}
 
-Dear {{ $withdrawal->user?->name ?? 'Publisher' }},
+Hello,
 
 Your withdrawal request has been {{ ucfirst($newStatus) }}.
 

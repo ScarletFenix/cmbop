@@ -5,7 +5,7 @@
 # Deposit Approved
 @endif
 
-Dear {{ $deposit->user?->name ?? 'Advertiser' }},
+Hello,
 
 @if($isPaypal)
 Your PayPal payment succeeded and €{{ number_format($deposit->amount, 2) }} has been added to your wallet.

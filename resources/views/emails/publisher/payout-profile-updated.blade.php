@@ -4,7 +4,7 @@
 @endphp
 # Payout details updated
 
-Dear {{ $userName }},
+Hello,
 
 Our support team has updated your locked payout details for {{ strtoupper($method) }}.
 

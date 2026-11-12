@@ -1,7 +1,7 @@
 <x-mail::message>
 # Pack discount {{ $change === 'removed' ? 'removed' : ($change === 'updated' ? 'updated' : 'added') }}
 
-Hi {{ $publisherName }},
+Hello,
 
 @if($change === 'removed')
 Staff removed the 3 / 5 / 10-article pack discount on **{{ $site->site_name }}**.

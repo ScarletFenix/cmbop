@@ -1,6 +1,8 @@
 @component('mail::message')
 # 1 day left before auto-complete
 
+Hello,
+
 Your guest post on {{ $siteName }} (order #{{ $order->order_number }}) is still under review.
 
 If you take no action in about {{ $hoursRemaining }} hour(s), the order will be auto-completed and the publisher will be paid.

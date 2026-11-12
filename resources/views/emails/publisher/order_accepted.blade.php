@@ -1,7 +1,7 @@
 @component('mail::message')
 # Order Accepted
 
-Dear Customer,
+Hello,
 
 Your order #{{ $order->order_number }} has been accepted by the publisher.
 

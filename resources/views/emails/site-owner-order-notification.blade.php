@@ -1,6 +1,6 @@
 {{-- resources/views/emails/site-owner-order-notification.blade.php --}}
 @component('mail::message')
-Hello {{ $publisherName }},
+Hello,
 
 A new order has been placed for your site {{ $site->site_name }}.
 

@@ -131,7 +131,8 @@ class MailNotificationAuditTest extends TestCase
             'Long live URLs should wrap with word-break: break-all'
         );
         $this->assertMatchesRegularExpression('/\b(UTC|GMT)\b/', $html);
-        $this->assertStringContainsString('Hello Arslan', $html);
+        $this->assertStringContainsString('Hello,', $html);
+        $this->assertStringNotContainsString('Hello Arslan', $html);
         $this->assertStringNotContainsString('>Advertiser<', $html);
         $this->assertStringNotContainsString('josen J', $html);
         $this->assertStringNotContainsString('Payment Status', $html);
@@ -264,7 +265,8 @@ class MailNotificationAuditTest extends TestCase
 
         $paymentHtml = (new OrderPaymentConfirmed($order->fresh(['user', 'items'])))->render();
         $this->assertStringContainsString('€135.60', $paymentHtml);
-        $this->assertStringContainsString('Payment confirmed', $paymentHtml);
+        $this->assertStringContainsString('has been confirmed', $paymentHtml);
+        $this->assertStringContainsString('Order placed', $paymentHtml);
         $this->assertStringNotContainsString('🎉', $paymentHtml);
         $this->assertMatchesRegularExpression('/\b(UTC|GMT)\b/', $paymentHtml);
     }

@@ -1,5 +1,5 @@
 @component('mail::message')
-Hello {{ $partnerName }},
+Hello,
 
 Someone asked to change the email on your SEOLinkBuildings partner account to **{{ $newEmail }}**. If this was you, no action is needed on this message — confirm from the new address instead.
 

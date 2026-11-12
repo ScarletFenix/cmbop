@@ -1,7 +1,7 @@
 @component('mail::message')
 # New in the catalog
 
-Hi {{ $firstName }},
+Hello,
 
 We have added {{ $rows->count() }} {{ $rows->count() === 1 ? 'site' : 'sites' }} you have not ordered from yet@if($discounted > 0), and {{ $discounted === 1 ? 'one is' : $discounted.' are' }} running an offer@endif.
 

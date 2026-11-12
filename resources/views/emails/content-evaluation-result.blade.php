@@ -5,7 +5,7 @@ Article approved for publication
 Article needs changes
 @endif
 
-Hello {{ $firstName }},
+Hello,
 
 @if($approved && !empty($result['approved_leftover']))
 Your article {{ $submission->title ?: $submission->original_filename }} is approved. Continue the open order it is already attached to — use Pay again there, or start a new checkout to replace it.

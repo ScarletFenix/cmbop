@@ -1,5 +1,5 @@
 @component('mail::message')
-Hello {{ $partnerName }},
+Hello,
 
 Your payout of **{{ $amountLabel }}** has been released.
 

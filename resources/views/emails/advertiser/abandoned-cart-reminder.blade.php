@@ -5,7 +5,7 @@ You still have sites in your cart
 Your cart is still waiting
 @endif
 
-Hi {{ $firstName }},
+Hello,
 
 @if($stage === 1)
 You added these placements and have not checked out yet. Prices below are what you would pay today, including any active offer.

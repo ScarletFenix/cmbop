@@ -1,7 +1,7 @@
 @component('mail::message')
 # Order Rejected
 
-Dear Customer,
+Hello,
 
 We regret to inform you that your order #{{ $order->order_number }} has been rejected by the publisher.
 

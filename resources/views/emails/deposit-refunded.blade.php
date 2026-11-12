@@ -1,7 +1,7 @@
 @component('mail::message')
 # PayPal deposit refunded
 
-Dear {{ $deposit->user?->name ?? 'Advertiser' }},
+Hello,
 
 €{{ number_format((float) $deposit->amount, 2) }} from your PayPal Add Funds deposit was refunded and removed from your wallet.
 

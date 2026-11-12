@@ -1,5 +1,5 @@
 @component('mail::message')
-Hello {{ $partnerName }},
+Hello,
 
 Confirm this address (**{{ $newEmail }}**) to finish changing your partner dashboard email. The change only applies after you click the button. This link expires in 24 hours.
 

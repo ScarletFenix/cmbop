@@ -1,7 +1,7 @@
 @component('mail::message')
 # Finish setup — add your website
 
-Hi {{ $firstName }},
+Hello,
 
 It's been a week since you joined as a publisher, and you still haven't listed a website.
 

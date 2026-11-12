@@ -1,7 +1,7 @@
 @component('mail::message')
 # {{ $kind === 'low_balance' ? 'Low balance alert' : 'Spend budget update' }}
 
-Hi {{ $user->name }},
+Hello,
 
 @if($kind === 'warn')
 You have used {{ number_format((float) ($status['percent'] ?? 0), 1) }}% of your

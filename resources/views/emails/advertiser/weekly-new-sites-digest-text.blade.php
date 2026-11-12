@@ -1,10 +1,29 @@
 @php
     $cardCount = $cards->count();
     $support = \App\Support\MailNotificationPresenter::supportEmail() ?: 'support@seolinkbuildings.com';
+    $matchedPairs = collect($cards)
+        ->map(function ($card) {
+            $niche = trim((string) ($card['niche'] ?? ''));
+            $country = trim((string) ($card['country_label'] ?? ''));
+            if ($niche !== '' && $country !== '') {
+                return $niche.' · '.$country;
+            }
+
+            return $niche !== '' ? $niche : $country;
+        })
+        ->filter()
+        ->unique()
+        ->values();
 @endphp
 New sites in your niches
 
-Hi {{ $firstName }}, here {{ $cardCount === 1 ? 'is a newly listed site' : 'are '.$cardCount.' newly listed sites' }} that match placements you have paid for.
+Hello,
+
+Here {{ $cardCount === 1 ? 'is a newly listed site' : 'are '.$cardCount.' newly listed sites' }} that match placements you have paid for.
+@if($matchedPairs->isNotEmpty())
+
+Matched on: {{ $matchedPairs->implode(' | ') }}
+@endif
 
 @foreach($cards as $card)
 {{ $card['domain'] }}
@@ -23,7 +42,7 @@ View site: {{ $card['details_url'] }}
 
 @endforeach
 @if(count($browseLinks) === 1)
-Browse matching sites ({{ $browseLinks[0]['niche'] }} in {{ $browseLinks[0]['country_label'] }}): {{ $browseLinks[0]['url'] }}
+Browse matching sites: {{ $browseLinks[0]['url'] }}
 @elseif(count($browseLinks) > 1)
 Browse matching sites:
 @foreach($browseLinks as $link)

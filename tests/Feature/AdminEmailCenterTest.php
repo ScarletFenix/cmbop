@@ -265,7 +265,9 @@ class AdminEmailCenterTest extends TestCase
         $this->actingAs($admin)
             ->get(route('admin.emails.preview', 'welcome'))
             ->assertOk()
-            ->assertSee('Welcome aboard, Sample', false);
+            ->assertSee('Welcome aboard', false)
+            ->assertSee('Hello,', false)
+            ->assertDontSee('Welcome aboard, Sample', false);
 
         $this->actingAs($admin)
             ->get(route('admin.emails.preview', 'not-a-real-template'))

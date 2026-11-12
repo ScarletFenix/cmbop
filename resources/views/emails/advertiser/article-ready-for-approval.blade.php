@@ -1,7 +1,7 @@
 @component('mail::message')
 # Article ready for approval — order #{{ $orderNumber }}
 
-Hi {{ $firstName }},
+Hello,
 
 The written article for {{ $siteName }} is ready. Approve it, or request one free revision.
 

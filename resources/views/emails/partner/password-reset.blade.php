@@ -1,5 +1,5 @@
 @component('mail::message')
-Hello {{ $partnerName }},
+Hello,
 
 Use this button to choose a new password for the SEOLinkBuildings partner dashboard.
 

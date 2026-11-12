@@ -1,7 +1,7 @@
 @component('mail::message')
 # Writing deadline soon — order #{{ $orderNumber }}
 
-Hi {{ $firstName }},
+Hello,
 
 The written article for {{ $siteName }} is due soon. Upload the draft so the advertiser can approve it.
 

@@ -1,7 +1,7 @@
 @component('mail::message')
 # {{ $headline }}
 
-Hello {{ $adminFirstName }},
+Hello,
 
 {{ $newUser->name }} just joined the platform as a {{ $roleLabel }}.
 

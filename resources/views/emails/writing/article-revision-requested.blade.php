@@ -1,7 +1,7 @@
 @component('mail::message')
 # Revision requested — order #{{ $orderNumber }}
 
-Hi {{ $firstName }},
+Hello,
 
 The advertiser asked for one free revision on the written article for {{ $siteName }}.
 

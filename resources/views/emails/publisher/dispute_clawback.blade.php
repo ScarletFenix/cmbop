@@ -1,7 +1,7 @@
 @component('mail::message')
 # Placement clawback
 
-Dear {{ $publisher->name }},
+Hello,
 
 A link-removed dispute was upheld for order #{{ $dispute->order?->order_number ?? $dispute->order_id }}.
 

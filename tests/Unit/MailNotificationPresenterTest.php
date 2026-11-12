@@ -3,6 +3,7 @@
 namespace Tests\Unit;
 
 use App\Models\OrderItem;
+use App\Models\User;
 use App\Support\LegalIdentity;
 use App\Support\MailNotificationPresenter;
 use Carbon\Carbon;
@@ -21,10 +22,22 @@ class MailNotificationPresenterTest extends TestCase
     public function test_datetime_includes_explicit_timezone(): void
     {
         config(['app.timezone' => 'UTC']);
+        if (app()->bound('transactional.mailTimezone')) {
+            app()->forgetInstance('transactional.mailTimezone');
+        }
         $label = MailNotificationPresenter::formatDateTime('2026-11-07 12:00:00');
 
         $this->assertStringContainsString('2026', $label);
-        $this->assertMatchesRegularExpression('/\b(UTC|GMT)\b/', $label);
+        $this->assertMatchesRegularExpression('/^7 Nov 2026, 12:00 PM \((UTC|GMT)\)$/', $label);
+    }
+
+    public function test_datetime_uses_recipient_timezone_when_present(): void
+    {
+        $user = new User;
+        $user->setAttribute('timezone', 'Asia/Karachi');
+        $label = MailNotificationPresenter::formatDateTime('2026-11-07 12:00:00', $user);
+
+        $this->assertMatchesRegularExpression('/7 Nov 2026, \d{1,2}:\d{2} [AP]M \(PKT\)/', $label);
     }
 
     public function test_live_url_rejects_unsafe_and_non_http_values(): void

@@ -411,7 +411,9 @@ class AdminCampaignsTest extends TestCase
         $this->assertStringNotContainsString('<html', strtolower((string) $payload['body_html']));
         $this->assertStringNotContainsString('<script', strtolower((string) $payload['body_html']));
         $this->assertStringContainsString('/email/verify/preview-id/preview-hash', (string) $payload['cta_url']);
-        $this->assertStringContainsString('Welcome aboard, Sample', (string) $payload['html']);
+        $this->assertStringContainsString('Welcome aboard', (string) $payload['html']);
+        $this->assertStringContainsString('Hello,', (string) $payload['html']);
+        $this->assertStringNotContainsString('Welcome aboard, Sample', (string) $payload['html']);
         $this->assertStringContainsString('/email/verify/preview-id/preview-hash', (string) $payload['html']);
     }
 
@@ -479,7 +481,9 @@ class AdminCampaignsTest extends TestCase
             ->getContent();
 
         $this->assertSame($emailCenter, $campaign);
-        $this->assertStringContainsString('Welcome aboard, Sample', $campaign);
+        $this->assertStringContainsString('Welcome aboard', $campaign);
+        $this->assertStringContainsString('Hello,', $campaign);
+        $this->assertStringNotContainsString('Welcome aboard, Sample', $campaign);
     }
 
     public function test_from_template_rejects_unknown_or_campaign_self(): void

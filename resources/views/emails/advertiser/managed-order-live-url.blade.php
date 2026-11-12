@@ -1,4 +1,6 @@
 @component('mail::message')
+Hello,
+
 {{ $bodyCopy }}
 
 @include('emails.partials.mail-article-live', ['articleLive' => $articleLive ?? null])

@@ -1,7 +1,7 @@
 @component('mail::message')
 # Your link is live
 
-Hi {{ $firstName }},
+Hello,
 
 The publisher has submitted the live link for your guest post on {{ $siteName }} (order #{{ $order->order_number }}).
 

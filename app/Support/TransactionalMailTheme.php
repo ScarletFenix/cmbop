@@ -66,7 +66,7 @@ class TransactionalMailTheme
         self::STATUS_NEW_SITES => ['label' => 'New sites', 'bg' => '#e6f5f5', 'fg' => '#123f42'],
     ];
 
-    public const PROGRESS_STEPS = ['Placed', 'Writing', 'Published', 'Approved'];
+    public const PROGRESS_STEPS = ['Placed', 'Accepted', 'Published', 'Approved'];
 
     /**
      * @var list<string>
@@ -504,7 +504,10 @@ class TransactionalMailTheme
      *     approve_url: string,
      *     corrections_url: string,
      *     show_protection: bool,
-     *     auto_approve_hours: int
+     *     auto_approve_hours: int,
+     *     homepage_placement: ?string,
+     *     social_promotion: ?string,
+     *     social_urls: list<array{label: string, url: string}>
      * }|null
      */
     public static function articleLivePayload(array $data, bool $advertiserAudience = true): ?array
@@ -550,8 +553,10 @@ class TransactionalMailTheme
             $correctionsUrl = $base.(str_contains($base, '?') ? '&' : '?').'action=modify';
         }
 
+        MailNotificationPresenter::bindMailTimezone($order->user ?? null, $order);
         $target = MailNotificationPresenter::safeLiveUrl($item->briefTargetUrl());
         $anchor = $item->briefAnchorText();
+        $extras = MailNotificationPresenter::articleLiveExtras($item);
 
         return [
             'site_name' => MailNotificationPresenter::siteLabel($item),
@@ -567,6 +572,9 @@ class TransactionalMailTheme
             'corrections_url' => $correctionsUrl,
             'show_protection' => $advertiserAudience,
             'auto_approve_hours' => OrderItem::autoApproveHours(),
+            'homepage_placement' => $extras['homepage_placement'],
+            'social_promotion' => $extras['social_promotion'],
+            'social_urls' => $extras['social_urls'],
         ];
     }
 

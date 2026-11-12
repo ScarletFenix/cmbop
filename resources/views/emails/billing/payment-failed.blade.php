@@ -1,7 +1,7 @@
 @component('mail::message')
 # Payment Failed
 
-Hello {{ $user->name }},
+Hello,
 
 We could not verify your payment for order #{{ $order?->order_number ?? $document->order_number }}.
 

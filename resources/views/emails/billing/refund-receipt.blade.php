@@ -1,7 +1,7 @@
 @component('mail::message')
 # Refund Receipt
 
-Hello {{ $user->name }},
+Hello,
 
 A refund has been processed for your order.
 

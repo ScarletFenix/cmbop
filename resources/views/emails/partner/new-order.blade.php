@@ -1,5 +1,5 @@
 @component('mail::message')
-Hello {{ $partnerName }},
+Hello,
 
 A new order **{{ $orderNumber }}** is waiting on **{{ $domain }}**.
 

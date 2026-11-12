@@ -31,6 +31,7 @@ class OrderStatusChanged extends PlatformMailable
     public function build()
     {
         $order = $this->order->loadMissing(['user', 'items.site.publisher']);
+        MailNotificationPresenter::bindMailTimezone($this->recipient, $order);
         $firstName = $this->firstName($this->recipient);
         $presenter = MailNotificationPresenter::class;
 

@@ -1,5 +1,7 @@
 @component('mail::message')
-# Your password was changed, {{ $firstName }}
+Hello,
+
+Your password was changed.
 
 Someone (hopefully you) changed the password for your {{ $brand['name'] ?? config('app.name') }} account{{ !empty($changedAt) ? ' on '.$changedAt : '' }}.
 

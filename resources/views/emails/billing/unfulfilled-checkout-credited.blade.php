@@ -1,7 +1,7 @@
 @component('mail::message')
 # Wallet topped up — order not created
 
-Dear {{ $user->name ?? 'Advertiser' }},
+Hello,
 
 Your {{ $methodLabel }} payment of €{{ number_format($amount, 2) }} succeeded, but we could not create the guest-post order (the listing left the catalog, the amount did not match, or the checkout expired).
 

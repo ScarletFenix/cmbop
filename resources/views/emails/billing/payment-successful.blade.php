@@ -1,7 +1,7 @@
 @component('mail::message')
 # Payment Successful
 
-Hello {{ $user->name }},
+Hello,
 
 Your payment was successful. Your invoice is attached to this email.
 

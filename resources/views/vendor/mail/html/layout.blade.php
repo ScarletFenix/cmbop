@@ -14,7 +14,7 @@
 @include('emails.partials.mail-css')
 {!! $head ?? '' !!}
 </head>
-<body class="mail-wrapper" style="margin:0;padding:0;width:100%;background-color:#f4fbfb;color:#334155;">
+<body class="mail-wrapper" style="margin:0;padding:0;width:100%;background-color:#f4fbfb;color:#334155;font-family:Arial, Helvetica, sans-serif;">
 @include('emails.partials.mail-preheader')
 <table class="wrapper" width="100%" cellpadding="0" cellspacing="0" role="presentation" style="width:100%;background-color:#f4fbfb;margin:0;padding:0;">
 <tr>

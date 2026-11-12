@@ -1,7 +1,7 @@
 @component('mail::message')
 # {{ $count === 1 ? '1 new user registered' : $count.' new users registered' }}
 
-Hello {{ $adminFirstName }},
+Hello,
 
 These accounts signed up since the last digest:
 

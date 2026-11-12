@@ -2,9 +2,11 @@
 
 namespace App\Support;
 
+use App\Models\Invoice;
 use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\Site;
+use App\Models\User;
 use Carbon\Carbon;
 use Carbon\CarbonInterface;
 
@@ -63,28 +65,210 @@ class MailNotificationPresenter
 
     public static function timezone(): string
     {
+        if (app()->bound('transactional.mailTimezone')) {
+            $bound = trim((string) app('transactional.mailTimezone'));
+            if ($bound !== '') {
+                return $bound;
+            }
+        }
+
         $tz = trim((string) config('app.timezone', 'UTC'));
 
         return $tz !== '' ? $tz : 'UTC';
     }
 
-    public static function formatDateTime(mixed $value, ?string $timezone = null): string
+    /**
+     * Prefer a timezone stored on the recipient, then the order schedule TZ, else UTC.
+     */
+    public static function bindMailTimezone(mixed $user = null, mixed $order = null): string
     {
-        if ($value === null || $value === '') {
-            return '—';
+        $tz = static::resolveMailTimezone($user, $order);
+        app()->instance('transactional.mailTimezone', $tz);
+
+        return $tz;
+    }
+
+    public static function resolveMailTimezone(mixed $user = null, mixed $order = null): string
+    {
+        $candidates = [];
+        if ($user instanceof User) {
+            foreach (['timezone', 'display_timezone', 'time_zone', 'tz'] as $key) {
+                $candidates[] = $user->getAttribute($key);
+            }
+        }
+        if (is_object($order)) {
+            $candidates[] = $order->schedule_timezone ?? null;
         }
 
-        $tz = $timezone ?: static::timezone();
+        foreach ($candidates as $candidate) {
+            $tz = trim((string) $candidate);
+            if ($tz === '') {
+                continue;
+            }
+            try {
+                new \DateTimeZone($tz);
+
+                return $tz;
+            } catch (\Throwable) {
+                continue;
+            }
+        }
+
+        return 'UTC';
+    }
+
+    public static function formatDateTime(mixed $value, mixed $timezoneOrUser = null): string
+    {
+        if ($value === null || $value === '') {
+            return '';
+        }
+
+        $tz = static::timezone();
+        if ($timezoneOrUser instanceof User) {
+            $tz = static::resolveMailTimezone($timezoneOrUser);
+        } elseif (is_string($timezoneOrUser) && trim($timezoneOrUser) !== '') {
+            $tz = trim($timezoneOrUser);
+        }
 
         try {
             $date = $value instanceof CarbonInterface
                 ? $value->copy()
                 : Carbon::parse((string) $value);
 
-            return $date->timezone($tz)->format('M j, Y g:i A T');
+            $local = $date->timezone($tz);
+
+            return $local->format('j M Y, g:i A').' ('.$local->format('T').')';
         } catch (\Throwable) {
-            return '—';
+            return '';
         }
+    }
+
+    public static function hasMailValue(mixed $value): bool
+    {
+        if ($value === null) {
+            return false;
+        }
+        if (is_array($value)) {
+            return $value !== [];
+        }
+
+        $text = trim(html_entity_decode(strip_tags((string) $value), ENT_QUOTES | ENT_HTML5, 'UTF-8'));
+
+        return $text !== ''
+            && $text !== '—'
+            && $text !== '-'
+            && strcasecmp($text, 'n/a') !== 0
+            && strcasecmp($text, 'not submitted yet') !== 0;
+    }
+
+    /**
+     * @param  list<array{label?: string, value?: mixed, url?: mixed}>  $rows
+     * @return list<array{label: string, value: string, url?: string}>
+     */
+    public static function filledMailRows(array $rows): array
+    {
+        $out = [];
+        foreach ($rows as $row) {
+            if (! is_array($row)) {
+                continue;
+            }
+            $value = $row['value'] ?? '';
+            $url = $row['url'] ?? null;
+            if (! static::hasMailValue($value) && ! static::hasMailValue($url)) {
+                continue;
+            }
+            $out[] = $row;
+        }
+
+        return $out;
+    }
+
+    public static function advertiserFacingItemPrice(OrderItem $item): float
+    {
+        return $item->advertiserEurAmount();
+    }
+
+    /**
+     * @return list<array{label: string, value: string, url?: string}>
+     */
+    public static function orderPlacedDetailRows(Order $order, mixed $totalAmount = null): array
+    {
+        static::bindMailTimezone($order->user ?? null, $order);
+        $total = $totalAmount !== null ? (float) $totalAmount : (float) $order->total_amount;
+        $method = Invoice::paymentMethodLabel($order->payment_method);
+
+        return static::filledMailRows([
+            ['label' => 'Order number', 'value' => $order->order_number ? '#'.$order->order_number : ''],
+            ['label' => 'Order date', 'value' => static::formatDateTime($order->created_at)],
+            ['label' => 'Payment date', 'value' => static::formatDateTime($order->paid_at ?: now())],
+            ['label' => 'Payment method', 'value' => $method],
+            ['label' => 'Total', 'value' => static::euro($total)],
+            ['label' => 'Reference code', 'value' => trim((string) ($order->reference_code ?? ''))],
+        ]);
+    }
+
+    /**
+     * @param  iterable<mixed>  $items
+     * @return list<array{site_name: string, site_url: ?string, price: string, content_link: ?string}>
+     */
+    public static function orderPlacedItemCards(iterable $items): array
+    {
+        $cards = [];
+        foreach ($items as $item) {
+            if (! $item instanceof OrderItem) {
+                continue;
+            }
+            $cards[] = [
+                'site_name' => static::siteName($item),
+                'site_url' => static::safeLiveUrl($item->site_url ?? $item->site?->site_url ?? null),
+                'price' => static::euro(static::advertiserFacingItemPrice($item)),
+                'content_link' => static::safeLiveUrl($item->content_link ?? null),
+            ];
+        }
+
+        return $cards;
+    }
+
+    /**
+     * Homepage / social extras for article-live details (never includes amounts).
+     *
+     * @return array{homepage_placement: ?string, social_promotion: ?string, social_urls: list<array{label: string, url: string}>}
+     */
+    public static function articleLiveExtras(OrderItem $item): array
+    {
+        $homepage = null;
+        if ($item->hasHomepagePlacement()) {
+            $days = (int) $item->homepage_days;
+            $homepage = $days.' day'.($days === 1 ? '' : 's');
+        }
+
+        $social = null;
+        if ($item->offersSocialPromotion()) {
+            $labels = collect($item->enabledSocialChannels())
+                ->map(fn (string $channel) => $item->socialChannelLabel($channel))
+                ->filter()
+                ->implode(', ');
+            if ($labels !== '') {
+                $social = $labels.' (included)';
+            }
+        }
+
+        $socialUrls = [];
+        foreach ($item->socialPostUrls() as $channel => $url) {
+            $safe = static::safeLiveUrl($url);
+            if ($safe) {
+                $socialUrls[] = [
+                    'label' => $item->socialChannelLabel((string) $channel),
+                    'url' => $safe,
+                ];
+            }
+        }
+
+        return [
+            'homepage_placement' => $homepage,
+            'social_promotion' => $social,
+            'social_urls' => $socialUrls,
+        ];
     }
 
     public static function safeLiveUrl(mixed $url): ?string
@@ -223,10 +407,10 @@ class MailNotificationPresenter
             $websiteValue = collect($placements)->pluck('site_label')->filter()->implode(', ');
         }
 
-        $rows = [
-            ['label' => 'Order number', 'value' => '#'.$order->order_number],
+        $rows = static::filledMailRows([
+            ['label' => 'Order number', 'value' => $order->order_number ? '#'.$order->order_number : ''],
             ['label' => 'Website', 'value' => $websiteValue],
-        ];
+        ]);
 
         if ($context !== self::CONTEXT_REVIEW_READY && $context !== self::CONTEXT_PAYMENT) {
             $rows[] = [
@@ -288,7 +472,7 @@ class MailNotificationPresenter
     public static function supportLine(string $intent = 'order'): string
     {
         if ($intent === 'order') {
-            return 'Questions about this order belong on the order page.';
+            return '';
         }
 
         $support = static::supportEmail();

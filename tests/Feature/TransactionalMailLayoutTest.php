@@ -84,6 +84,9 @@ class TransactionalMailLayoutTest extends TestCase
             'live_url_submitted_at' => now(),
             'anchor_text' => 'European guest posts',
             'target_url' => 'https://advertiser.example/offer',
+            'homepage_days' => 7,
+            'homepage_price' => 25,
+            'social_channels' => ['facebook', 'x'],
         ]);
     }
 
@@ -138,11 +141,25 @@ class TransactionalMailLayoutTest extends TestCase
         $this->assertStringNotContainsString(LegalIdentity::FOOTER, $html);
         $this->assertStringNotContainsString('Jules', $html);
         $this->assertStringNotContainsString('€120', $html);
+        $this->assertStringNotContainsString('€25', $html);
         $this->assertStringNotContainsString('Dofollow verified', $html);
         $this->assertStringNotContainsString('Unsubscribe', $html);
-        $this->assertMatchesRegularExpression('/\b(UTC|GMT)\b/', $html);
-        $this->assertStringContainsString('success-check.gif', $html);
+        $this->assertMatchesRegularExpression('/\d{1,2} [A-Z][a-z]{2} \d{4}, \d{1,2}:\d{2} [AP]M \((UTC|GMT|PKT)\)/', $html);
+        $this->assertStringContainsString('mail-tick', $html);
+        $this->assertStringContainsString('✓', $html);
+        $this->assertStringNotContainsString('success-check.gif', $html);
         $this->assertFileExists(public_path('assets/img/email/success-check.gif'));
+        $this->assertStringContainsString('Hello,', $html);
+        $this->assertStringNotContainsString('Hello Ada', $html);
+        $this->assertStringContainsString('Homepage placement', $html);
+        $this->assertStringContainsString('7 days', $html);
+        $this->assertStringContainsString('Social promotion', $html);
+        $this->assertStringNotContainsString('Questions about this order belong on the order page.', $html);
+        $this->assertStringNotContainsString('Live article on Layout Mag', $html);
+        $this->assertStringContainsString('mail-logo-pill', $html);
+        $this->assertStringContainsString('mail-progress-future', $html);
+        $this->assertStringContainsString('Accepted', $html);
+        $this->assertStringNotContainsString('>Writing<', $html);
     }
 
     public function test_order_placed_email_shows_progress_and_omits_company_details(): void
@@ -153,8 +170,16 @@ class TransactionalMailLayoutTest extends TestCase
         $this->assertStringContainsString('https://seolinkbuildings.com/assets/img/logo1.png', $html);
         $this->assertStringContainsString('Order placed', $html);
         $this->assertStringContainsString('Placed', $html);
-        $this->assertStringContainsString('Writing', $html);
+        $this->assertStringContainsString('Accepted', $html);
+        $this->assertStringNotContainsString('>Writing<', $html);
         $this->assertStringContainsString('#ORD-LAYOUT-1', $html);
+        $this->assertStringContainsString('REF-LAYOUT-1', $html);
+        $this->assertStringContainsString('€120.00', $html);
+        $this->assertStringContainsString('Hello,', $html);
+        $this->assertStringNotContainsString('Hello Ada', $html);
+        $this->assertStringNotContainsString('Best regards', $html);
+        $this->assertStringNotContainsString('This is a confirmation that your payment has been received', $html);
+        $this->assertStringContainsString('https://layout-mag.example', $html);
         $this->assertStringContainsString('Questions? Just reply to this email', $html);
         $this->assertStringNotContainsString('Teqno', $html);
         $this->assertStringNotContainsString('17392540', $html);
@@ -175,7 +200,8 @@ class TransactionalMailLayoutTest extends TestCase
 
         $this->assertStringContainsString('Order placed', $html);
         $this->assertStringContainsString('New order created', $html);
-        $this->assertStringContainsString('Hello Ada', $html);
+        $this->assertStringContainsString('Hello,', $html);
+        $this->assertStringNotContainsString('Hello Ada', $html);
         $this->assertStringNotContainsString('Jules', $html);
     }
 
@@ -187,6 +213,10 @@ class TransactionalMailLayoutTest extends TestCase
         $this->assertStringContainsString('New sites', $html);
         $this->assertStringContainsString('View site', $html);
         $this->assertStringContainsString('from €', $html);
+        $this->assertStringContainsString('Hello,', $html);
+        $this->assertStringContainsString('Matched on: Marketing · United Kingdom', $html);
+        $this->assertStringNotContainsString('Preview card for', $html);
+        $this->assertStringContainsString('Arial, Helvetica, sans-serif', $html);
         $this->assertStringContainsString('Unsubscribe', $html);
         $this->assertStringContainsString('Help center', $html);
         $this->assertStringContainsString('Notification settings', $html);
@@ -261,5 +291,30 @@ class TransactionalMailLayoutTest extends TestCase
             'order' => $this->order->fresh(['items.site']),
             'orderItem' => $this->item->fresh(['site']),
         ])['dofollow_verified']);
+    }
+
+    public function test_review_deadline_uses_recipient_timezone_when_present(): void
+    {
+        $order = $this->order->fresh(['user', 'items.site']);
+        $order->user->setAttribute('timezone', 'Asia/Karachi');
+        $html = (new LiveUrlSubmitted(
+            $order,
+            $this->item->fresh(['site']),
+            $this->site,
+            $this->item->live_url,
+        ))->render();
+
+        $this->assertMatchesRegularExpression('/\d{1,2} [A-Z][a-z]{2} \d{4}, \d{1,2}:\d{2} [AP]M \(PKT\)/', $html);
+    }
+
+    public function test_order_preview_fixture_item_price_matches_total(): void
+    {
+        $html = EmailCatalog::makeMailable('order_payment_confirmed')?->render() ?? '';
+        $this->assertNotSame('', $html);
+        $this->assertSame(2, substr_count($html, '€138.00'));
+        $this->assertStringNotContainsString('€99.00', $html);
+        $this->assertStringNotContainsString('Reference code', $html);
+        $this->assertStringNotContainsString('Sample User', $html);
+        $this->assertStringContainsString('Hello,', $html);
     }
 }

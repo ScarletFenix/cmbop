@@ -1,7 +1,7 @@
 @component('mail::message')
 # Payment Pending Verification
 
-Hello {{ $user->name }},
+Hello,
 
 We received your order and your payment is currently pending verification.
 

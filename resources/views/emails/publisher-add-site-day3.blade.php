@@ -1,7 +1,7 @@
 @component('mail::message')
 # List your first website
 
-Hi {{ $firstName }},
+Hello,
 
 You're registered as a publisher on {{ $brand['name'] ?? config('app.name') }}, but you haven't added a website yet.
 

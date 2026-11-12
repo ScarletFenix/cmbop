@@ -1,7 +1,7 @@
 @component('mail::message')
 # {{ $monthLabel }} spending summary
 
-Hello {{ $firstName }},
+Hello,
 
 Your monthly spending overview is ready.
 

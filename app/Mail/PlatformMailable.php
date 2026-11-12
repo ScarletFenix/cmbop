@@ -8,11 +8,13 @@ use App\Models\EmailLog;
 use App\Models\EmailNotificationPreference;
 use App\Models\EmailNotificationSetting;
 use App\Models\Invoice;
+use App\Models\Order;
 use App\Models\User;
 use App\Services\Billing\InvoicePdfGenerator;
 use App\Services\Wallet\WelcomeBonusService;
 use App\Support\EmailCatalog;
 use App\Support\MailAddress;
+use App\Support\MailNotificationPresenter;
 use App\Support\TransactionalMailTheme;
 use Carbon\Carbon;
 use Illuminate\Bus\Queueable;
@@ -83,6 +85,11 @@ abstract class PlatformMailable extends Mailable implements ShouldQueue
     public function buildViewData()
     {
         $data = parent::buildViewData();
+        $user = $this->recipientUser
+            ?? (($data['user'] ?? null) instanceof User ? $data['user'] : null)
+            ?? (($data['advertiser'] ?? null) instanceof User ? $data['advertiser'] : null);
+        $order = ($data['order'] ?? null) instanceof Order ? $data['order'] : null;
+        MailNotificationPresenter::bindMailTimezone($user, $order);
         $theme = TransactionalMailTheme::fromViewData($data);
         $data['mailTheme'] = $theme;
         app()->instance('transactional.mailTheme', $theme);

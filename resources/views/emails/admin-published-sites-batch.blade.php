@@ -1,7 +1,7 @@
 @component('mail::message')
 # Websites are live on your account
 
-Hi {{ $publisherName }},
+Hello,
 
 Our team published {{ $count === 1 ? '1 website' : $count.' websites' }} on your account. {{ $count === 1 ? 'It is' : 'They are' }} live for advertisers and not verified yet. You do not need to Accept invites.
 

@@ -1,6 +1,6 @@
 @component('mail::message')
 @if(!empty($advertiserCompleted))
-Hi {{ $greetingName }},
+Hello,
 
 We're happy to let you know that your order #{{ $order->order_number }} is now complete, and all links are live. You can find the full summary of your published links in the attached document.
 
@@ -16,7 +16,7 @@ Place a new order
 
 Thank you for choosing us, and we look forward to working with you again soon!
 @else
-Hello {{ $firstName }},
+Hello,
 
 {{ $copy }}
 
@@ -49,9 +49,5 @@ Hello {{ $firstName }},
 @endcomponent
 @endif
 
-@include('emails.partials.mail-support', ['supportLine' => $supportLine ?? null, 'intent' => 'order'])
-
-Thanks,<br>
-{{ $brand['name'] ?? config('app.name') }} Team
 @endif
 @endcomponent

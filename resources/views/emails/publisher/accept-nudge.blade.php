@@ -1,7 +1,7 @@
 @component('mail::message')
 # {{ $stage >= 3 ? 'Your order is still waiting' : 'A paid order is waiting on you' }}
 
-Hi {{ $firstName }},
+Hello,
 
 An advertiser paid for a placement on {{ $siteName }} {{ $hoursWaiting }} hour(s) ago and order #{{ $order->order_number }} has not been accepted yet.
 

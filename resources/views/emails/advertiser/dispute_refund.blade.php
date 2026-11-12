@@ -1,7 +1,7 @@
 @component('mail::message')
 # {{ $viaPaypal ? 'Refund sent to PayPal' : 'Refund credited' }}
 
-Dear {{ $advertiser->name }},
+Hello,
 
 Your link-removed dispute for order #{{ $dispute->order?->order_number ?? $dispute->order_id }} was upheld.
 

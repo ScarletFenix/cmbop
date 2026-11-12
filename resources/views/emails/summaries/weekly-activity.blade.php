@@ -1,7 +1,7 @@
 @component('mail::message')
 # Your week in review
 
-Hello {{ $firstName }},
+Hello,
 
 Here’s a quick look at your activity this week.
 
