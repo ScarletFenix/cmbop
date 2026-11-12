@@ -5,7 +5,7 @@ A new deposit request has been submitted by {{ $user->name }} ({{ $user->email }
 
 ## Deposit Details:
 
-- Amount: €{{ number_format($deposit->amount, 2) }}
+- Amount: {{ \App\Support\MailNotificationPresenter::euro((float) $deposit->amount) }}
 @if(!empty($deposit->charge_currency) && strtoupper((string) $deposit->charge_currency) !== 'EUR')
 - Charge: {{ strtoupper((string) $deposit->charge_currency) }} {{ number_format((float) ($deposit->charge_amount ?? 0), 2) }}
 @endif

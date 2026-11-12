@@ -16,9 +16,9 @@
 @endphp
 <tr>
 <td class="mail-summary-label" valign="middle" style="width:38%;padding:11px 14px;color:#64748b;font-family:Arial,Helvetica,sans-serif;font-size:13px;font-weight:400;{{ $border }}">{{ $label }}</td>
-<td class="{{ $valueClass }}" valign="middle" align="right" style="padding:11px 14px;color:{{ $valueColor }};font-family:Arial,Helvetica,sans-serif;font-size:14px;font-weight:700;text-align:right;{{ $border }}word-break:break-word;">
+<td class="{{ $valueClass }}" valign="middle" align="right" style="padding:11px 14px;color:{{ $valueColor }};font-family:Arial,Helvetica,sans-serif;font-size:14px;font-weight:700;text-align:right;{{ $border }}word-break:normal;overflow-wrap:anywhere;">
 @if(filled($url))
-<a class="mail-url" href="{{ $url }}" style="color:#1a585e;word-break:break-all;font-family:Arial,Helvetica,sans-serif;font-weight:700;">{{ $value !== '' ? $value : $url }}</a>
+<a class="mail-url" href="{{ $url }}" style="color:#1a585e;word-break:normal;overflow-wrap:anywhere;font-family:Arial,Helvetica,sans-serif;font-weight:700;">{{ $value !== '' ? $value : $url }}</a>
 @else
 {{ $value }}
 @endif

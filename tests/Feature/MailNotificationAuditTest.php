@@ -126,9 +126,10 @@ class MailNotificationAuditTest extends TestCase
         $this->assertStringContainsString('Request corrections', $html);
         $this->assertStringContainsString('approve it or request corrections', $html);
         $this->assertTrue(
-            str_contains($html, 'word-break:break-all') || str_contains($html, 'word-break: break-all'),
-            'Long live URLs should wrap with word-break: break-all'
+            str_contains($html, 'word-break:normal') || str_contains($html, 'word-break: normal'),
+            'Live URLs should not break mid-word'
         );
+        $this->assertStringNotContainsString('word-break:break-all', $html);
         $this->assertMatchesRegularExpression('/\b(UTC|GMT)\b/', $html);
         $this->assertStringContainsString('Hello,', $html);
         $this->assertStringNotContainsString('Hello Arslan', $html);

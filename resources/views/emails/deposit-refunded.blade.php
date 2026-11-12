@@ -3,19 +3,19 @@
 
 Hello,
 
-€{{ number_format((float) $deposit->amount, 2) }} from your PayPal Add Funds deposit was refunded and removed from your wallet.
+{{ \App\Support\MailNotificationPresenter::euro((float) $deposit->amount) }} from your PayPal Add Funds deposit was refunded and removed from your wallet.
 
 ## Deposit details
 
-- Amount: €{{ number_format((float) $deposit->amount, 2) }}
+- Amount: {{ \App\Support\MailNotificationPresenter::euro((float) $deposit->amount) }}
 - Reference code: {{ $deposit->reference_code }}
 - Payment method: {{ $methodLabel }}
 @if(($debt ?? 0) > 0.009)
-- Outstanding wallet debt: €{{ number_format((float) $debt, 2) }}
+- Outstanding wallet debt: {{ \App\Support\MailNotificationPresenter::euro((float) $debt) }}
 @endif
 
 @if(($debt ?? 0) > 0.009)
-Part of this deposit had already been spent, so €{{ number_format((float) $debt, 2) }} remains as outstanding wallet debt.
+Part of this deposit had already been spent, so {{ \App\Support\MailNotificationPresenter::euro((float) $debt) }} remains as outstanding wallet debt.
 @endif
 
 @component('mail::button', ['url' => $balanceUrl, 'color' => 'primary'])

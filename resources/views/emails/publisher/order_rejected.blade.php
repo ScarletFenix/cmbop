@@ -11,8 +11,6 @@ Hello,
 </table>
 @endif
 
-You can browse other publishers and place a new order.
-
 @component('mail::button', ['url' => $ctaUrl ?? rtrim(app_public_url(), '/').route('advertiser.catalog', [], false)])
 Browse Publishers
 @endcomponent

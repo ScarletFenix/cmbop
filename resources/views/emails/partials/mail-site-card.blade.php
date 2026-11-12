@@ -2,7 +2,7 @@
     $card = $card ?? [];
     $domain = (string) ($card['domain'] ?? 'Website');
     $price = $card['price'] ?? null;
-    $priceLabel = $price !== null ? 'from €'.number_format((float) $price, 2) : null;
+    $priceLabel = $price !== null ? 'from '.\App\Support\MailNotificationPresenter::euro((float) $price) : null;
     $hasShot = ! empty($card['has_screenshot']) && ! empty($card['screenshot_url']);
 @endphp
 <table class="mail-card mail-item-card" width="100%" cellpadding="0" cellspacing="0" role="presentation" style="margin:0 0 16px 0;border:1px solid #e2e8f0;border-radius:12px;background-color:#ffffff;font-family:Arial,Helvetica,sans-serif;">

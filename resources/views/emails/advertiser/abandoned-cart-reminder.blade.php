@@ -17,7 +17,7 @@ These placements are still in your cart. Open checkout when you are ready — pr
 | Site | Qty | Price |
 | :--- | ---: | ---: |
 @foreach($lines as $line)
-| {{ $line['domain'] }} | {{ (int) $line['quantity'] }} | @if(!empty($line['discount']) && !empty($line['was']))~~€{{ number_format((float) $line['was'], 2) }}~~ €{{ number_format((float) $line['price'], 2) }}@else€{{ number_format((float) $line['price'], 2) }}@endif |
+| {{ $line['domain'] }} | {{ (int) $line['quantity'] }} | @if(!empty($line['discount']) && !empty($line['was']))~~{{ \App\Support\MailNotificationPresenter::euro((float) $line['was']) }}~~ {{ \App\Support\MailNotificationPresenter::euro((float) $line['price']) }}@else{{ \App\Support\MailNotificationPresenter::euro((float) $line['price']) }}@endif |
 @endforeach
 @endcomponent
 

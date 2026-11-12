@@ -8,7 +8,7 @@ A refund has been processed for your order.
 | | |
 |:--|:--|
 | Refund receipt | {{ $refund->invoice_number }} |
-| Refund amount | {{ $symbol }}{{ number_format((float) $refund->total_amount, 2) }} {{ $refund->currency }} |
+| Refund amount | {{ \App\Support\MailNotificationPresenter::euro((float) $refund->total_amount, (string) $symbol) }} {{ $refund->currency }} |
 | Refund date | {{ \App\Support\MailNotificationPresenter::formatDateTime($refund->invoice_date) }} |
 | Transaction ID | {{ $refund->transaction_id }} |
 | Original invoice | {{ $originalInvoice?->invoice_number ?? data_get($refund->meta, 'original_invoice', '—') }} |

@@ -7,9 +7,9 @@ Your monthly spending overview is ready.
 
 | Metric | Value |
 |--------|-------|
-| Total spend | €{{ number_format((float) ($payload['spend'] ?? 0), 2) }} |
+| Total spend | {{ \App\Support\MailNotificationPresenter::euro((float) ($payload['spend'] ?? 0)) }} |
 | Orders | {{ $payload['orders'] ?? 0 }} |
-| Avg order value | €{{ number_format((float) ($payload['aov'] ?? 0), 2) }} |
+| Avg order value | {{ \App\Support\MailNotificationPresenter::euro((float) ($payload['aov'] ?? 0)) }} |
 
 @component('mail::button', ['url' => $ctaUrl])
 {{ $ctaLabel }}

@@ -153,6 +153,16 @@ class MailNotificationPresenter
         return (string) preg_replace('~^https?://~i', '', $safe);
     }
 
+    public static function displayUrlTruncated(?string $url, int $max = 42): string
+    {
+        $display = static::displayUrl($url);
+        if ($display === '' || mb_strlen($display) <= $max) {
+            return $display;
+        }
+
+        return rtrim(mb_substr($display, 0, max(1, $max - 1)), './-').'…';
+    }
+
     public static function bareHost(mixed $value): ?string
     {
         $text = trim((string) $value);
@@ -221,15 +231,24 @@ class MailNotificationPresenter
         static::bindMailTimezone($order->user ?? null, $order);
         $total = $totalAmount !== null ? (float) $totalAmount : (float) $order->total_amount;
         $method = Invoice::paymentMethodLabel($order->payment_method);
+        $orderDate = static::formatDateTime($order->created_at);
+        $paidDate = static::formatDateTime($order->paid_at ?: now());
+        $dateRows = $orderDate !== '' && $orderDate === $paidDate
+            ? [['label' => 'Paid on', 'value' => $paidDate]]
+            : [
+                ['label' => 'Order date', 'value' => $orderDate],
+                ['label' => 'Payment date', 'value' => $paidDate],
+            ];
 
-        return static::filledMailRows([
-            ['label' => 'Order', 'value' => $order->order_number ? '#'.$order->order_number : ''],
-            ['label' => 'Order date', 'value' => static::formatDateTime($order->created_at)],
-            ['label' => 'Payment date', 'value' => static::formatDateTime($order->paid_at ?: now())],
-            ['label' => 'Payment method', 'value' => $method],
-            ['label' => 'Total', 'value' => static::euro($total)],
-            ['label' => 'Reference code', 'value' => trim((string) ($order->reference_code ?? ''))],
-        ]);
+        return static::filledMailRows(array_merge(
+            [['label' => 'Order', 'value' => $order->order_number ? '#'.$order->order_number : '']],
+            $dateRows,
+            [
+                ['label' => 'Payment method', 'value' => $method],
+                ['label' => 'Total', 'value' => static::euro($total)],
+                ['label' => 'Reference code', 'value' => trim((string) ($order->reference_code ?? ''))],
+            ]
+        ));
     }
 
     /**
@@ -238,11 +257,15 @@ class MailNotificationPresenter
      */
     public static function orderPlacedItemCards(iterable $items): array
     {
-        $cards = [];
+        $list = [];
         foreach ($items as $item) {
-            if (! $item instanceof OrderItem) {
-                continue;
+            if ($item instanceof OrderItem) {
+                $list[] = $item;
             }
+        }
+        $showPrice = count($list) > 1;
+        $cards = [];
+        foreach ($list as $item) {
             $url = static::safeLiveUrl($item->site_url ?? $item->site?->site_url ?? null);
             $domain = static::siteDomain($item) ?: static::siteName($item);
             $cards[] = [
@@ -251,6 +274,7 @@ class MailNotificationPresenter
                 'site_url' => $url,
                 'site_url_display' => $url ? static::displayUrl($url) : null,
                 'price' => static::euro(static::advertiserFacingItemPrice($item)),
+                'show_price' => $showPrice,
                 'content_link' => static::safeLiveUrl($item->content_link ?? null),
             ];
         }
@@ -501,7 +525,12 @@ class MailNotificationPresenter
 
     public static function euro(float $amount, string $symbol = '€'): string
     {
-        return $symbol.number_format($amount, 2);
+        $cents = (int) round($amount * 100);
+        if ($cents % 100 === 0) {
+            return $symbol.number_format($cents / 100, 0, '.', '');
+        }
+
+        return $symbol.number_format($cents / 100, 2, '.', '');
     }
 
     public static function repliesAreMonitored(): bool

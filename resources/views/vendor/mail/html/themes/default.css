@@ -157,15 +157,16 @@ img {
 }
 
 .inner-body a {
-    word-break: break-all;
+    word-break: normal;
+    overflow-wrap: anywhere;
 }
 
 /* Subcopy */
 
 .subcopy {
     border-top: 1px solid #e2e8f0;
-    margin-top: 25px;
-    padding-top: 25px;
+    margin-top: 12px;
+    padding-top: 12px;
 }
 
 .subcopy p {
@@ -247,14 +248,14 @@ img {
 
 .mail-url {
     color: #1a585e;
-    word-break: break-all;
+    word-break: normal;
     overflow-wrap: anywhere;
 }
 
 .content-cell,
 .mail-pad {
     max-width: 100vw;
-    padding: 24px 28px;
+    padding: 24px 28px 16px 28px;
 }
 
 /* Buttons */
@@ -263,7 +264,7 @@ img {
     -premailer-cellpadding: 0;
     -premailer-cellspacing: 0;
     -premailer-width: 100%;
-    margin: 30px auto;
+    margin: 8px auto 0;
     padding: 0;
     text-align: center;
     width: 100%;
@@ -345,5 +346,6 @@ img {
 /* Utilities */
 
 .break-all {
-    word-break: break-all;
+    word-break: normal;
+    overflow-wrap: anywhere;
 }

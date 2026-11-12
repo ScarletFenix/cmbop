@@ -14,7 +14,7 @@ Note from publisher:
 URL + price (from publisher):
 
 @foreach($bulkRequest->items as $item)
-- {{ $item->site_url }} — €{{ number_format((float) $item->price, 2) }}
+- {{ $item->site_url }} — {{ \App\Support\MailNotificationPresenter::euro((float) $item->price) }}
 @endforeach
 @endif
 

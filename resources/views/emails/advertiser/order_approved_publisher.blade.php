@@ -27,17 +27,17 @@ Great news! The advertiser has approved the order for your site.
 
 ## Payment Details:
 
-- Base Price: €{{ number_format($basePrice, 2) }}
+- Base Price: {{ \App\Support\MailNotificationPresenter::euro((float) $basePrice) }}
 @if($orderItem->additional_price > 0)
-- {{ ucfirst($orderItem->sensitive_type) }}: +€{{ number_format($orderItem->additional_price, 2) }}
+- {{ ucfirst($orderItem->sensitive_type) }}: +{{ \App\Support\MailNotificationPresenter::euro((float) $orderItem->additional_price) }}
 @endif
 @if($orderItem->hasHomepagePlacement())
-- Homepage ({{ (int) $orderItem->homepage_days }} day{{ (int) $orderItem->homepage_days === 1 ? '' : 's' }}): @if((float) ($orderItem->homepage_price ?? 0) > 0)+€{{ number_format((float) $orderItem->homepage_price, 2) }}@else Free @endif
+- Homepage ({{ (int) $orderItem->homepage_days }} day{{ (int) $orderItem->homepage_days === 1 ? '' : 's' }}): @if((float) ($orderItem->homepage_price ?? 0) > 0)+{{ \App\Support\MailNotificationPresenter::euro((float) $orderItem->homepage_price) }}@else Free @endif
 @endif
 @if($orderItem->offersSocialPromotion())
 - Social: {{ collect($orderItem->enabledSocialChannels())->map(fn ($c) => $orderItem->socialChannelLabel($c))->implode(', ') }} (included)
 @endif
-- Amount Credited: €{{ number_format($payoutAmount, 2) }}
+- Amount Credited: {{ \App\Support\MailNotificationPresenter::euro((float) $payoutAmount) }}
 
 ## What this means:
 

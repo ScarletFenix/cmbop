@@ -4,7 +4,9 @@ namespace Tests\Feature;
 
 use App\Mail\DepositApproved;
 use App\Mail\LiveUrlSubmitted;
+use App\Mail\OrderAccepted;
 use App\Mail\OrderPaymentConfirmed;
+use App\Mail\OrderRejected;
 use App\Mail\OrderStatusChanged;
 use App\Mail\WeeklyNewSitesDigestMail;
 use App\Models\DepositRequest;
@@ -141,6 +143,26 @@ class TransactionalMailLayoutTest extends TestCase
         $this->assertStringContainsString('Published', $html);
         $this->assertStringContainsString('mail-progress-line', $html);
         $this->assertStringContainsString('mail-progress-current', $html);
+        $this->assertStringContainsString('width:28px', $html);
+        $this->assertStringContainsString('height:28px', $html);
+        $this->assertTrue(
+            str_contains($html, 'border-radius:50%')
+            || str_contains($html, 'border-radius: 50%')
+            || str_contains($html, 'border-radius:28px')
+            || str_contains($html, 'border-radius: 28px'),
+            'Progress steps should be true circles (50% or 28px radius)'
+        );
+        $this->assertStringContainsString('mail-dofollow', $html);
+        $this->assertTrue(
+            str_contains($html, 'word-break:normal') || str_contains($html, 'word-break: normal'),
+            'Anchor URL should use word-break: normal'
+        );
+        $this->assertFalse(
+            str_contains($html, 'word-break:break-all') || str_contains($html, 'word-break: break-all'),
+            'Anchor URL should not use word-break: break-all'
+        );
+        $this->assertStringContainsString('advertiser.example/offer', $html);
+        $this->assertStringContainsString('v:roundrect', $html);
         $this->assertTrue(
             str_contains($html, '2px solid #0b6266')
             || str_contains($html, '2px solid #0B6266')
@@ -192,7 +214,14 @@ class TransactionalMailLayoutTest extends TestCase
         $this->assertStringNotContainsString('>Writing<', $html);
         $this->assertStringContainsString('#ORD-LAYOUT-1', $html);
         $this->assertStringContainsString('REF-LAYOUT-1', $html);
-        $this->assertStringContainsString('€120.00', $html);
+        $this->assertStringContainsString('€120', $html);
+        $this->assertStringNotContainsString('€120.00', $html);
+        $this->assertStringContainsString('Paid on', $html);
+        $this->assertStringNotContainsString('Order date', $html);
+        $this->assertStringNotContainsString('Payment date', $html);
+        $this->assertStringContainsString('View your content', $html);
+        $this->assertStringNotContainsString('>Content<', $html);
+        $this->assertEquals(1, substr_count($html, '>layout-mag.example<'));
         $this->assertStringContainsString('Hello,', $html);
         $this->assertStringNotContainsString('Hello Ada', $html);
         $this->assertStringNotContainsString('Best regards', $html);
@@ -203,6 +232,39 @@ class TransactionalMailLayoutTest extends TestCase
         $this->assertStringNotContainsString('17392540', $html);
         $this->assertStringNotContainsString('Unsubscribe', $html);
         $this->assertGreaterThan(0, substr_count($html, 'width="600"') + substr_count($html, 'width:600px'));
+    }
+
+    public function test_order_accepted_email_omits_subtitle_duplicate(): void
+    {
+        $html = (new OrderAccepted(
+            $this->order->fresh(['user', 'items']),
+            $this->item->fresh(['site']),
+            $this->site,
+        ))->render();
+
+        $this->assertStringContainsString('ACCEPTED', $html);
+        $this->assertStringContainsString('layout-mag.example accepted your order', $html);
+        $this->assertStringContainsString('The publisher accepted this order and work can begin.', $html);
+        $this->assertStringNotContainsString('The publisher has accepted your order and will start working on it.', $html);
+        $this->assertStringContainsString('width:28px', $html);
+        $this->assertStringContainsString('v:roundrect', $html);
+        $this->assertStringContainsString('Hello,', $html);
+    }
+
+    public function test_order_rejected_email_omits_subtitle_duplicate(): void
+    {
+        $html = (new OrderRejected(
+            $this->order->fresh(['user', 'items']),
+            $this->item->fresh(['site']),
+            $this->site,
+            'Does not fit the editorial calendar.',
+        ))->render();
+
+        $this->assertStringContainsString('REJECTED', $html);
+        $this->assertStringContainsString('layout-mag.example did not accept your order', $html);
+        $this->assertStringContainsString('This placement was not accepted. Browse other sites to continue.', $html);
+        $this->assertStringNotContainsString('You can browse other publishers and place a new order.', $html);
+        $this->assertStringContainsString('Hello,', $html);
     }
 
     public function test_created_order_status_email_is_order_placed_step(): void
@@ -229,11 +291,17 @@ class TransactionalMailLayoutTest extends TestCase
         $html = EmailCatalog::makeMailable('weekly_new_sites')?->render() ?? '';
         $this->assertNotSame('', $html);
         $this->assertStringContainsString('https://seolinkbuildings.com/assets/img/logo1.png', $html);
-        $this->assertStringContainsString('New sites', $html);
+        $this->assertStringContainsString('NEW SITES', $html);
+        $this->assertStringContainsString('✦', $html);
         $this->assertStringContainsString('View site', $html);
-        $this->assertStringContainsString('from €', $html);
+        $this->assertStringContainsString('from €90', $html);
+        $this->assertStringContainsString('from €140', $html);
+        $this->assertStringNotContainsString('from €90.00', $html);
+        $this->assertStringNotContainsString('from €140.00', $html);
+        $this->assertStringContainsString('align="center"', $html);
         $this->assertStringContainsString('Hello,', $html);
         $this->assertStringContainsString('Matched on: Marketing · United Kingdom', $html);
+        $this->assertStringNotContainsString('Here are 2 newly listed sites that match placements you have paid for.', $html);
         $this->assertStringNotContainsString('Preview card for', $html);
         $this->assertStringContainsString('Arial, Helvetica, sans-serif', $html);
         $this->assertStringContainsString('Unsubscribe', $html);
@@ -255,7 +323,8 @@ class TransactionalMailLayoutTest extends TestCase
         ]);
         $html = (new DepositApproved($deposit->fresh('user')))->render();
         $this->assertStringContainsString('WALLET TOP-UP', $html);
-        $this->assertStringContainsString('€50.00', $html);
+        $this->assertStringContainsString('€50', $html);
+        $this->assertStringNotContainsString('€50.00', $html);
         $this->assertStringNotContainsString('Teqno Ltd', $html);
     }
 
@@ -344,8 +413,11 @@ class TransactionalMailLayoutTest extends TestCase
     {
         $html = EmailCatalog::makeMailable('order_payment_confirmed')?->render() ?? '';
         $this->assertNotSame('', $html);
-        $this->assertSame(2, substr_count($html, '€138.00'));
+        $this->assertSame(1, substr_count($html, '€138'));
+        $this->assertStringNotContainsString('€138.00', $html);
         $this->assertStringNotContainsString('€99.00', $html);
+        $this->assertStringContainsString('Paid on', $html);
+        $this->assertStringContainsString('View your content', $html);
         $this->assertStringNotContainsString('Reference code', $html);
         $this->assertStringNotContainsString('Sample User', $html);
         $this->assertStringContainsString('Hello,', $html);

@@ -116,7 +116,7 @@ There has been a status change for your site <strong>{{ $site->site_name }}</str
 - Site Name: {{ $site->site_name }}
 - Site URL: {{ $site->site_url }}
 - Category: {{ $site->category }}
-- Price: €{{ number_format($site->price, 2) }}
+- Price: {{ \App\Support\MailNotificationPresenter::euro((float) $site->price) }}
 - DA/DR: {{ $site->da }}/{{ $site->dr }}
 - Traffic: {{ number_format($site->traffic) }} monthly visitors
 

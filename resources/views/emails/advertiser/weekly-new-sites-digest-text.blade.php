@@ -1,5 +1,4 @@
 @php
-    $cardCount = $cards->count();
     $support = \App\Support\MailNotificationPresenter::supportEmail() ?: 'support@seolinkbuildings.com';
     $matchedPairs = collect($cards)
         ->map(function ($card) {
@@ -18,8 +17,6 @@
 New sites in your niches
 
 Hello,
-
-Here {{ $cardCount === 1 ? 'is a newly listed site' : 'are '.$cardCount.' newly listed sites' }} that match placements you have paid for.
 @if($matchedPairs->isNotEmpty())
 
 Matched on: {{ $matchedPairs->implode(' | ') }}
@@ -36,7 +33,7 @@ DA {{ $card['da'] }}
 DR {{ $card['dr'] }}
 @endif
 @if(($card['price'] ?? null) !== null)
-from €{{ number_format((float) $card['price'], 2) }}
+from {{ \App\Support\MailNotificationPresenter::euro((float) $card['price']) }}
 @endif
 View site: {{ $card['details_url'] }}
 

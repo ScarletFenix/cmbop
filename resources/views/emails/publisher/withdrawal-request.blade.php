@@ -13,9 +13,9 @@ A new withdrawal request has been submitted and requires your attention.
 
 ## Financial Breakdown:
 
-- Requested Amount: €{{ number_format($withdrawal->amount, 2) }}
-- Platform Fee ({{ $platformChargePercent ?? config('billing.withdrawal_fee_percent', 0) }}%): -€{{ number_format($withdrawal->fee, 2) }}
-- Net Amount to Pay: €{{ number_format($withdrawal->net_amount, 2) }}
+- Requested Amount: {{ \App\Support\MailNotificationPresenter::euro((float) $withdrawal->amount) }}
+- Platform Fee ({{ $platformChargePercent ?? config('billing.withdrawal_fee_percent', 0) }}%): -{{ \App\Support\MailNotificationPresenter::euro((float) $withdrawal->fee) }}
+- Net Amount to Pay: {{ \App\Support\MailNotificationPresenter::euro((float) $withdrawal->net_amount) }}
 
 ## Payment Details:
 

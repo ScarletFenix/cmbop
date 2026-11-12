@@ -4,6 +4,7 @@ namespace App\Mail;
 
 use App\Models\User;
 use App\Models\Withdrawal;
+use App\Support\MailNotificationPresenter;
 
 class PartnerPayoutReleasedMail extends PartnerDashboardMail
 {
@@ -19,9 +20,11 @@ class PartnerPayoutReleasedMail extends PartnerDashboardMail
 
     public function build()
     {
-        $amount = number_format((float) ($this->withdrawal->net_amount ?? $this->withdrawal->amount), 2);
+        $amount = (float) ($this->withdrawal->net_amount ?? $this->withdrawal->amount);
         $currency = strtoupper((string) ($this->withdrawal->currency ?: 'EUR'));
-        $label = $currency === 'EUR' ? '€'.$amount : $currency.' '.$amount;
+        $label = $currency === 'EUR'
+            ? MailNotificationPresenter::euro($amount)
+            : $currency.' '.MailNotificationPresenter::euro($amount, '');
 
         return $this->subject('Payout released: '.$label)
             ->markdown('emails.partner.payout-released')

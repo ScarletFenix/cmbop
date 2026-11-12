@@ -10,7 +10,7 @@ We regret to inform you that your deposit request has been rejected.
 
 ## Deposit Details:
 
-- Amount: €{{ number_format($deposit->amount, 2) }}
+- Amount: {{ \App\Support\MailNotificationPresenter::euro((float) $deposit->amount) }}
 - Reference Code: {{ $deposit->reference_code }}
 - Rejected At: {{ optional($deposit->rejected_at)->format('M d, Y H:i') ?? now()->format('M d, Y H:i') }}
 

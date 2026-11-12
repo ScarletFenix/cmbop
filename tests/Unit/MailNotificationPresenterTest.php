@@ -61,6 +61,13 @@ class MailNotificationPresenterTest extends TestCase
         $this->assertFalse(MailNotificationPresenter::dofollowVerified($item));
         $this->assertSame('example.com/post', MailNotificationPresenter::displayUrl('https://example.com/post'));
         $this->assertSame('news.example', MailNotificationPresenter::bareHost('https://www.news.example/path'));
+        $this->assertSame('€90', MailNotificationPresenter::euro(90));
+        $this->assertSame('€138', MailNotificationPresenter::euro(138.00));
+        $this->assertSame('€135.60', MailNotificationPresenter::euro(135.60));
+        $this->assertSame(
+            'advertiser.example/a-very-long-path-that…',
+            MailNotificationPresenter::displayUrlTruncated('https://advertiser.example/a-very-long-path-that-should-ellipsis', 42)
+        );
     }
 
     public function test_legal_identity_normalizes_partners_with_wording(): void

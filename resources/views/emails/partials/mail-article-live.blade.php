@@ -9,7 +9,9 @@
     $targetHref = $live['target_url'] ?? null;
     $targetText = (string) ($live['target_url_display'] ?? '');
     if ($targetText === '' && is_string($targetHref)) {
-        $targetText = \App\Support\MailNotificationPresenter::displayUrl($targetHref);
+        $targetText = \App\Support\MailNotificationPresenter::displayUrlTruncated($targetHref);
+    } elseif ($targetText !== '' && mb_strlen($targetText) > 42) {
+        $targetText = \App\Support\MailNotificationPresenter::displayUrlTruncated($targetHref ?: ('https://'.$targetText));
     }
 @endphp
 @if($hasShot || $hasAnchor)
@@ -23,25 +25,21 @@
 @endif
 @if($hasAnchor)
 <tr>
-<td style="padding:12px 14px;font-family:Arial,Helvetica,sans-serif;">
-<table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="font-family:Arial,Helvetica,sans-serif;">
-<tr>
-<td valign="middle" style="font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:1.45;color:#334155;word-break:break-word;">
-<span style="color:#64748b;">Anchor text:</span>
+<td class="mail-anchor-body" style="padding:12px 14px;font-family:Arial,Helvetica,sans-serif;">
+<p class="mail-anchor-line" style="margin:0;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:1.45;color:#334155;word-break:normal;overflow-wrap:anywhere;">
+<span class="mail-anchor-label" style="color:#64748b;">Anchor text:</span>
 @if($anchor !== '')
-<strong style="color:#123f42;font-weight:700;"> {{ $anchor }}</strong>
+<strong class="mail-anchor-value" style="color:#123f42;font-weight:700;"> {{ $anchor }}</strong>
 @endif
 @if($targetHref)
- → <a class="mail-url" href="{{ $targetHref }}" style="color:#1a585e;word-break:break-all;">{{ $targetText !== '' ? $targetText : $targetHref }}</a>
+ → <a class="mail-url mail-anchor-url" href="{{ $targetHref }}" style="color:#1a585e;word-break:normal;overflow-wrap:anywhere;">{{ $targetText !== '' ? $targetText : $targetHref }}</a>
 @endif
-</td>
+</p>
 @if(!empty($live['show_dofollow_pill']))
-<td valign="middle" align="right" width="130" style="padding-left:10px;white-space:nowrap;">
+<p class="mail-dofollow" style="margin:8px 0 0 0;">
 <span style="display:inline-block;background-color:#dcfce7;color:#15803d;font-size:11px;font-weight:700;padding:4px 8px;border-radius:999px;font-family:Arial,Helvetica,sans-serif;">Dofollow verified</span>
-</td>
+</p>
 @endif
-</tr>
-</table>
 </td>
 </tr>
 @endif
@@ -74,7 +72,7 @@
 @endphp
 @include('emails.partials.mail-details-table', ['rows' => $detailRows])
 
-<table class="mail-btn-row" align="center" width="100%" cellpadding="0" cellspacing="0" role="presentation" style="margin:4px 0 12px 0;font-family:Arial,Helvetica,sans-serif;">
+<table class="mail-btn-row" align="center" width="100%" cellpadding="0" cellspacing="0" role="presentation" style="margin:4px 0 8px 0;font-family:Arial,Helvetica,sans-serif;">
 <tr>
 <td align="center" style="padding:0;">
 <table cellpadding="0" cellspacing="0" role="presentation" align="center" style="margin:0 auto;font-family:Arial,Helvetica,sans-serif;">

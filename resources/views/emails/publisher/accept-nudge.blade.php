@@ -5,7 +5,7 @@ Hello,
 
 An advertiser paid for a placement on {{ $siteName }} {{ $hoursWaiting }} hour(s) ago and order #{{ $order->order_number }} has not been accepted yet.
 
-The money is already reserved. Accepting it starts your turnaround clock and puts €{{ number_format($payout, 2) }} on the way to your balance.
+The money is already reserved. Accepting it starts your turnaround clock and puts {{ \App\Support\MailNotificationPresenter::euro((float) $payout) }} on the way to your balance.
 
 @component('mail::button', ['url' => $tasksUrl])
 Accept the order

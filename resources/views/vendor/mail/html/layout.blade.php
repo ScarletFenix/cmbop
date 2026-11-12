@@ -26,7 +26,7 @@
 <td class="body" width="100%" cellpadding="0" cellspacing="0" style="border: hidden !important;background-color:#f7fafb;">
 <table class="inner-body mail-body-card" align="center" width="600" cellpadding="0" cellspacing="0" role="presentation" style="width:600px;max-width:600px;background-color:#f7fafb;">
 <tr>
-<td class="content-cell mail-pad{{ !empty($mailTheme?->hideFirstBodyHeading) ? ' mail-has-hero' : '' }}" style="padding:24px 28px 28px 28px;">
+<td class="content-cell mail-pad{{ !empty($mailTheme?->hideFirstBodyHeading) ? ' mail-has-hero' : '' }}" style="padding:24px 28px 16px 28px;">
 @include('emails.partials.mail-hero')
 @include('emails.partials.mail-progress')
 <div class="mail-body-copy">

@@ -158,10 +158,11 @@ class TransactionalMailTheme
         $theme->pillLabel = $mapped ? $pill['label'] : '';
         $theme->pillBg = $pill['bg'];
         $theme->pillFg = $pill['fg'];
-        $theme->showHeroIcon = $mapped && $theme->status !== self::STATUS_NEW_SITES;
+        $theme->showHeroIcon = $mapped;
         [$theme->heroMark, $theme->heroIconBg, $theme->heroIconFg] = match ($theme->status) {
             self::STATUS_REJECTED => ['✕', '#b91c1c', '#ffffff'],
             self::STATUS_ACTION_NEEDED => ['!', '#b45309', '#ffffff'],
+            self::STATUS_NEW_SITES => ['✦', '#0b6266', '#ffffff'],
             default => ['✓', '#0b6266', '#ffffff'],
         };
         $theme->showSuccessIcon = $theme->showHeroIcon && $theme->heroMark === '✓';

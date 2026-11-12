@@ -9,7 +9,7 @@ We could not verify your payment for order #{{ $order?->order_number ?? $documen
 |:--|:--|
 | Reason | {{ $reason }} |
 | Transaction reference | {{ $document->transaction_id }} |
-| Attempted amount | {{ $symbol }}{{ number_format((float) $document->total_amount, 2) }} {{ $document->currency }} |
+| Attempted amount | {{ \App\Support\MailNotificationPresenter::euro((float) $document->total_amount, (string) $symbol) }} {{ $document->currency }} |
 | Attempt date | {{ optional($document->invoice_date)->format('F j, Y g:i A') }} |
 
 ### Suggested next steps

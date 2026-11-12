@@ -3,6 +3,7 @@
 namespace App\Mail;
 
 use App\Services\Wallet\ManualWithdrawalMarkPaidLink;
+use App\Support\MailNotificationPresenter;
 
 /**
  * Admin alert: a publisher (or advertiser) requested a withdrawal. Primary CTA
@@ -27,7 +28,7 @@ class WithdrawalRequestNotification extends PlatformMailable
 
     public function build()
     {
-        return $this->subject('New Withdrawal Request - €'.number_format($this->withdrawal->amount, 2))
+        return $this->subject('New Withdrawal Request - '.MailNotificationPresenter::euro((float) $this->withdrawal->amount))
             ->markdown('emails.publisher.withdrawal-request')
             ->with([
                 'withdrawal' => $this->withdrawal,

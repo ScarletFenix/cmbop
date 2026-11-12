@@ -24,7 +24,7 @@
 <td class="body" width="100%" style="background-color:#f7fafb;">
 <table class="inner-body mail-body-card" align="center" width="600" cellpadding="0" cellspacing="0" role="presentation" style="width:600px;max-width:600px;background-color:#f7fafb;">
 <tr>
-<td class="content-cell mail-pad" style="padding:24px 28px 28px 28px;">
+<td class="content-cell mail-pad" style="padding:24px 28px 16px 28px;">
 @include('emails.partials.mail-hero')
 @include('emails.partials.mail-progress')
 @yield('body')

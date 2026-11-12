@@ -4,6 +4,7 @@ namespace App\Mail;
 
 use App\Models\DepositRequest;
 use App\Services\Wallet\ManualDepositApproveLink;
+use App\Support\MailNotificationPresenter;
 
 /**
  * Admin alert: a new manual deposit request was created. Primary CTA opens the
@@ -25,7 +26,7 @@ class DepositRequestSubmitted extends PlatformMailable
 
     public function build()
     {
-        return $this->subject('New Deposit Request - €'.number_format($this->deposit->amount, 2))
+        return $this->subject('New Deposit Request - '.MailNotificationPresenter::euro((float) $this->deposit->amount))
             ->markdown('emails.deposit-request-submitted')
             ->with([
                 'deposit' => $this->deposit,

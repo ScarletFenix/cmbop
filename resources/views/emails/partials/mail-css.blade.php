@@ -12,6 +12,22 @@ body, table, td, th, p, a, span, div, h1, h2, h3, h4, li, strong, em, b {
   .mail-btn-row .mail-btn-cell { display: block !important; width: 100% !important; padding: 0 0 8px 0 !important; }
   .mail-btn-row .mail-btn, .mail-btn-row .mail-btn-outline { display: block !important; width: 100% !important; text-align: center !important; box-sizing: border-box !important; }
 }
+.mail-progress-done, .mail-progress-future, .mail-progress-current {
+  display: inline-block;
+  width: 28px;
+  height: 28px;
+  min-width: 28px;
+  min-height: 28px;
+  max-width: 28px;
+  max-height: 28px;
+  border-radius: 50%;
+  text-align: center;
+  box-sizing: border-box;
+}
+.mail-anchor-url, .mail-url {
+  word-break: normal;
+  overflow-wrap: anywhere;
+}
 @media (prefers-color-scheme: dark) {
   body, .wrapper, .mail-wrapper { background-color: #0b1f21 !important; color: #d4f1f0 !important; }
   .inner-body, .mail-body-card, .body { background-color: #123f42 !important; }
@@ -28,7 +44,7 @@ body, table, td, th, p, a, span, div, h1, h2, h3, h4, li, strong, em, b {
   }
   .mail-card td, .mail-details td, .mail-item-card td, .mail-anchor td,
   .mail-card p, .mail-details p, .mail-item-card p, .mail-anchor p,
-  .mail-protection td {
+  .mail-anchor span, .mail-anchor strong, .mail-protection td {
     background-color: transparent !important;
     color: #d4f1f0 !important;
   }
@@ -51,11 +67,25 @@ body, table, td, th, p, a, span, div, h1, h2, h3, h4, li, strong, em, b {
     border-color: #3faeb2 !important;
   }
   .mail-tick { background-color: #3faeb2 !important; color: #ffffff !important; }
+  .mail-anchor-label { color: #9ec9cb !important; }
+  .mail-anchor-value, .mail-anchor strong, .mail-anchor-line, .mail-anchor p {
+    color: #d4f1f0 !important;
+  }
+  .mail-item-domain { color: #d4f1f0 !important; }
+  .mail-progress-done, .mail-progress-future, .mail-progress-current {
+    width: 28px !important;
+    height: 28px !important;
+    min-width: 28px !important;
+    min-height: 28px !important;
+    border-radius: 50% !important;
+    text-align: center !important;
+  }
   .mail-progress-future { background-color: #4b5563 !important; color: #e5e7eb !important; }
   .mail-progress-current {
     background-color: #123f42 !important;
     border-color: #3faeb2 !important;
     color: #d4f1f0 !important;
+    box-sizing: border-box !important;
   }
   .mail-progress-done { background-color: #3faeb2 !important; color: #ffffff !important; }
   .mail-progress-label-future { color: #94a3b8 !important; }
@@ -81,9 +111,13 @@ body, table, td, th, p, a, span, div, h1, h2, h3, h4, li, strong, em, b {
 [data-ogsc] .mail-item-card td, [data-ogsb] .mail-item-card td,
 [data-ogsc] .mail-anchor td, [data-ogsb] .mail-anchor td,
 [data-ogsc] .mail-card p, [data-ogsb] .mail-card p,
-[data-ogsc] .mail-anchor p, [data-ogsb] .mail-anchor p {
+[data-ogsc] .mail-anchor p, [data-ogsb] .mail-anchor p,
+[data-ogsc] .mail-anchor-value, [data-ogsb] .mail-anchor-value,
+[data-ogsc] .mail-anchor strong, [data-ogsb] .mail-anchor strong,
+[data-ogsc] .mail-item-domain, [data-ogsb] .mail-item-domain {
   color: #d4f1f0 !important;
 }
+[data-ogsc] .mail-anchor-label, [data-ogsb] .mail-anchor-label { color: #9ec9cb !important; }
 [data-ogsc] .mail-btn, [data-ogsb] .mail-btn,
 [data-ogsc] a.button-primary, [data-ogsb] a.button-primary {
   background-color: #0b6266 !important;

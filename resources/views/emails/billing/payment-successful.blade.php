@@ -11,7 +11,7 @@ Your payment was successful. Your invoice is attached to this email.
 |:--|:--|
 | Invoice | {{ $invoice->invoice_number }} |
 | Order | #{{ $order?->order_number ?? $invoice->order_number }} |
-| Amount paid | {{ $symbol }}{{ number_format((float) $invoice->total_amount, 2) }} {{ $invoice->currency }} |
+| Amount paid | {{ \App\Support\MailNotificationPresenter::euro((float) $invoice->total_amount, (string) $symbol) }} {{ $invoice->currency }} |
 | Payment method | {{ \App\Models\Invoice::paymentMethodLabel($invoice->payment_method) }} |
 | Transaction ID | {{ $invoice->transaction_id }} |
 | Paid at | {{ \App\Support\MailNotificationPresenter::formatDateTime($invoice->paid_at) }} |
@@ -19,7 +19,7 @@ Your payment was successful. Your invoice is attached to this email.
 ## Order summary
 
 @foreach(($order?->items ?? collect()) as $item)
-- {{ $item->site_name }} — {{ $symbol }}{{ number_format((float) $item->price, 2) }}
+- {{ $item->site_name }} — {{ \App\Support\MailNotificationPresenter::euro((float) $item->price, (string) $symbol) }}
 @endforeach
 
 @component('mail::button', ['url' => $viewOrderUrl, 'color' => 'primary'])

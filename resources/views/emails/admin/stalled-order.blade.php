@@ -10,7 +10,7 @@ Order #{{ $order->order_number }} has run through the automated reminder cadence
 | Late by | {{ $days }} day(s) |
 | Site | {{ $siteName }} |
 | Publisher | {{ $publisher?->name ?? 'unknown' }}{{ $publisher?->email ? ' ('.$publisher->email.')' : '' }} |
-| Order value | €{{ number_format((float) $order->total_amount, 2) }} |
+| Order value | {{ \App\Support\MailNotificationPresenter::euro((float) $order->total_amount) }} |
 @endcomponent
 
 @component('mail::button', ['url' => $adminUrl])

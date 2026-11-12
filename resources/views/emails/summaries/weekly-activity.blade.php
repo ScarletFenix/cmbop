@@ -8,7 +8,7 @@ Here’s a quick look at your activity this week.
 | Metric | Value |
 |--------|-------|
 | Orders | {{ $payload['orders'] ?? 0 }} |
-| Spend | €{{ number_format((float) ($payload['spend'] ?? 0), 2) }} |
+| Spend | {{ \App\Support\MailNotificationPresenter::euro((float) ($payload['spend'] ?? 0)) }} |
 | Completed | {{ $payload['completed'] ?? 0 }} |
 
 @component('mail::button', ['url' => $ctaUrl])
