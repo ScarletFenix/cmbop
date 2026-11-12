@@ -358,6 +358,17 @@
             @endphp
 
             {{-- Filters + sort + suggest sit immediately above the results table. --}}
+            <div class="catalog-mobile-filter-bar">
+                <button type="button"
+                        class="btn btn-sm btn-outline-secondary catalog-filters-toggle"
+                        id="catalogFiltersToggle"
+                        aria-expanded="false"
+                        aria-controls="catalogFiltersPanel">
+                    <i class="fa-solid fa-sliders" aria-hidden="true"></i>
+                    <span>{{ __('messages.catalog_filters_toggle') }}</span>
+                    <span class="catalog-filters-toggle__count{{ count($activeFilterChips) ? '' : ' d-none' }}" data-catalog-filter-count>{{ count($activeFilterChips) }}</span>
+                </button>
+            </div>
             <div class="row mb-3" id="catalogFiltersPanel">
                 <div class="col-md-12">
                     <div class="card border-0 shadow-sm catalog-filters-card">
@@ -816,10 +827,22 @@
                         </div>
                     </div>
                 </form>
+                        </div>
+                    </div>
+                </div>
+            </div>
 
-                <div id="catalogActiveFiltersHost">
+            <div class="catalog-sticky-chrome">
+            @include('advertiser.partials.catalog-product-tabs', [
+                'context' => 'catalog',
+                'activeProduct' => $catalogProductTab,
+                'catalogTabCounts' => $catalogTabCounts ?? [],
+            ])
+            </div>
+
+            <div id="catalogActiveFiltersHost">
                 @if(count($activeFilterChips))
-                    <div class="d-flex flex-wrap align-items-center gap-2 mt-3" id="activeFilterChips">
+                    <div class="d-flex flex-wrap align-items-center gap-2 mb-2" id="activeFilterChips">
                         <span class="small text-muted me-1">Active:</span>
                         @foreach($activeFilterChips as $chip)
                             @php
@@ -858,17 +881,7 @@
                         <a href="{{ route('advertiser.catalog', ['product' => $catalogProductTab]) }}" class="small ms-1 catalog-clear-all">Clear all</a>
                     </div>
                 @endif
-                </div>
-                        </div>
-                    </div>
-                </div>
             </div>
-
-            @include('advertiser.partials.catalog-product-tabs', [
-                'context' => 'catalog',
-                'activeProduct' => $catalogProductTab,
-                'catalogTabCounts' => $catalogTabCounts ?? [],
-            ])
 
             <div class="catalog-results-bar d-flex flex-wrap align-items-center justify-content-between gap-2 mb-2">
                 <div class="text-muted small" id="catalogResultsCount" data-catalog-results-count>
@@ -915,9 +928,32 @@
                  dead for as long as the request took. --}}
             @include('advertiser.partials.catalog-results')
 
+            <div class="catalog-compare-bar" id="catalogCompareBar" hidden>
+                <span class="catalog-compare-bar__count" data-catalog-selected-count>0 selected</span>
+                <button type="button" class="btn btn-sm btn-primary" id="catalogBulkAddBtn">{{ __('messages.catalog_add_n_to_cart', ['count' => 0]) }}</button>
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="catalogCompareBtn" disabled>{{ __('messages.catalog_compare') }}</button>
+                <button type="button" class="btn btn-sm btn-link catalog-compare-bar__clear" id="catalogSelectClear">Clear selection</button>
+            </div>
+
+            <div class="catalog-mobile-cart-bar" id="catalogMobileCartBar" hidden>
+                <span class="catalog-mobile-cart-bar__count" data-catalog-mobile-cart-count></span>
+                <button type="button" class="btn btn-sm btn-primary" onclick="openCart()">{{ __('messages.catalog_mobile_cart') }}</button>
+            </div>
         </div>
     </div>
 
+</div>
+
+<div class="modal fade" id="catalogCompareModal" tabindex="-1" aria-labelledby="catalogCompareTitle" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 class="modal-title h5 mb-0" id="catalogCompareTitle">{{ __('messages.catalog_compare_title') }}</h2>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body" id="catalogCompareBody"></div>
+        </div>
+    </div>
 </div>
 
 <script>
@@ -946,7 +982,16 @@ window.CatalogConfig = {
     defaultSort: @json(\App\Services\Catalog\CatalogUrlQuery::DEFAULT_SORT),
     i18n: {
         priceFrom: @json(__('messages.catalog_price_from')),
-        percentOff: @json(__('messages.catalog_percent_off'))
+        percentOff: @json(__('messages.catalog_percent_off')),
+        addNToCart: @json(__('messages.catalog_add_n_to_cart')),
+        compare: @json(__('messages.catalog_compare')),
+        compareLimit: @json(__('messages.catalog_compare_limit')),
+        selectedCount: @json(__('messages.catalog_selected_count')),
+        guestPost: @json(__('messages.catalog_tab_guest_posts')),
+        linkInsertion: @json(__('messages.catalog_tab_link_insertions')),
+        mobileCartCount: @json(__('messages.catalog_mobile_cart_count')),
+        filters: @json(__('messages.catalog_filters_toggle')),
+        filtersCount: @json(__('messages.catalog_filters_toggle_count'))
     },
     // Phase 7 kill switch — false falls back to full page navigations.
     liveSearch: @json((bool) config('catalog.live_search.enabled', true)),

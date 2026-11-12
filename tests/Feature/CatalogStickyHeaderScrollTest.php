@@ -67,8 +67,12 @@ class CatalogStickyHeaderScrollTest extends TestCase
 
         $this->assertStringContainsString('About Traffic column', $html);
         $this->assertStringContainsString('glass-tip-trigger', $html);
+        $this->assertStringContainsString('catalog-sticky-chrome', $html);
+        $this->assertStringContainsString('id="catalogFiltersToggle"', $html);
 
         $css = (string) file_get_contents(public_path('assets/css/catalog.css'));
+        $this->assertStringContainsString('.catalog-page .catalog-sticky-chrome', $css);
+        $this->assertStringContainsString('--catalog-thead-top', $css);
 
         // Headers lock under the shell topbar while the page scrolls.
         $this->assertMatchesRegularExpression(
