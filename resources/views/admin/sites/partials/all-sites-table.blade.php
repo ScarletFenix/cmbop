@@ -48,6 +48,7 @@
                     <th class="admin-narrow-col d-none d-lg-table-cell">Tag</th>
                     <th class="admin-narrow-col d-none d-md-table-cell">Traffic</th>
                     <th class="admin-narrow-col">Price</th>
+                    <th class="admin-narrow-col">LI</th>
                     <th class="admin-narrow-col">Listed</th>
                     <th class="admin-actions-col">Actions</th>
                 </tr>
@@ -97,6 +98,7 @@
                     </td>
                     <td class="small d-none d-md-table-cell">@include('admin.sites.partials.row-traffic')</td>
                     <td>@include('admin.sites.partials.row-price')</td>
+                    <td>@include('admin.sites.partials.row-link-insertion')</td>
                     <td class="small">@include('admin.sites.partials.listed-age')</td>
                     <td class="staff-queue-actions">
                         <div class="d-flex flex-wrap gap-1">
@@ -145,7 +147,7 @@
                 </tr>
             @empty
                 <tr>
-                    <td colspan="11" class="text-center text-muted py-4">
+                    <td colspan="12" class="text-center text-muted py-4">
                         @if(($publisherSearch ?? '') !== '' || count($listQuery ?? []) > 0)
                             Nothing matches these filters.
                             <a href="{{ staff_route('sites.index') }}">Clear filters</a>

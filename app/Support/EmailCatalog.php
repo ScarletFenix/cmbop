@@ -308,7 +308,7 @@ class EmailCatalog
             ],
             'link_guarantee_restore' => [
                 'name' => 'Link Guarantee Restore',
-                'description' => 'Publisher notified when a monthly guarantee check cannot find the advertiser URL, with 7 days to restore it.',
+                'description' => 'Publisher notified when a monthly guarantee check cannot find the advertiser URL, with 7 days to restore it. Guest-post guarantees last 12 months; paid link-insertion guarantees stay in force while the article remains published.',
                 'category' => 'Orders',
                 'mailable' => LinkGuaranteeRestoreMail::class,
                 'status' => 'active',

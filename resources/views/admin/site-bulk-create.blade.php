@@ -46,8 +46,9 @@
                         <textarea id="rows" name="rows" rows="10" class="form-control font-monospace @error('rows') is-invalid @enderror" placeholder="url,price,da,dr,traffic,country,language,site_name,example_url,turnaround,publication,link_type,tag,niches,description">{{ old('rows') }}</textarea>
                         <div class="form-text">
                             One site per line. Columns: url, price, da, dr, traffic, country, language, site name, example url, turnaround (3days), publication (permanent), link type (dofollow), tag, niches separated by |, description.
+                            Optional named columns: accepts_link_insertions, link_insertion_price, link_insertion_link_type, link_insertion_delivery_days (blank = not accepting).
                             A niche or description may contain commas. If the site name contains a comma, wrap that column in quotes.
-                            A CSV with the same columns replaces the paste.
+                            A CSV with a header row and the same columns replaces the paste.
                         </div>
                         @error('rows')<div class="invalid-feedback">{{ $message }}</div>@enderror
                     </div>

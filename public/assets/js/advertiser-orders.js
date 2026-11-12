@@ -1555,8 +1555,17 @@ function bootAdvertiserOrdersPage() {
             const chips = [];
             if (item.link_type) chips.push({ key: 'link_type', label: String(item.link_type) });
             if (item.publication_time) chips.push({ key: 'publication_time', label: String(item.publication_time) });
-            if (order.link_guarantee === true) chips.push({ key: 'link_guarantee', label: '12-month guarantee' });
-            else if (order.link_guarantee === false) chips.push({ key: 'link_guarantee', label: 'No 12-month guarantee' });
+            const isLi = String(item.product_type || '') === 'link_insertion';
+            if (isLi) {
+                chips.push({ key: 'product_type', label: 'Link insertion' });
+                chips.push({ key: 'duration', label: 'Permanent' });
+                const hasAddon = item.link_guarantee === true || item.link_guarantee === 1 || order.link_guarantee === true;
+                chips.push({ key: 'link_guarantee', label: hasAddon ? 'Link guarantee' : 'No Link guarantee' });
+            } else if (order.link_guarantee === true) {
+                chips.push({ key: 'link_guarantee', label: '12-month guarantee' });
+            } else if (order.link_guarantee === false) {
+                chips.push({ key: 'link_guarantee', label: 'No 12-month guarantee' });
+            }
             if (!chips.length) return '';
             return `<div class="ov-link-terms" aria-label="Link terms">${chips.map((c) =>
                 `<span class="ov-link-term ov-link-term--${escapeHtml(c.key)}">${escapeHtml(c.label)}</span>`
@@ -2658,11 +2667,16 @@ function bootAdvertiserOrdersPage() {
                 : 'Declines refund automatically · request changes before auto-approve';
         }
 
-        const hasGuarantee = order.link_guarantee === true
-            || order.link_guarantee === 1
-            || /12[\s-]?month|guarantee/i.test(note || '');
+        const firstItem = (Array.isArray(order.items) ? order.items : []).find((it) => it) || {};
+        const isLi = String(firstItem.product_type || '') === 'link_insertion';
+        const hasPaidAddon = firstItem.link_guarantee === true
+            || firstItem.link_guarantee === 1
+            || order.link_guarantee === true
+            || order.link_guarantee === 1;
+        const hasGuarantee = hasPaidAddon || /guarantee/i.test(note || '');
+        const guaranteeSummary = isLi ? 'Link guarantee' : '12-month link guarantee';
         const summaryLabel = hasGuarantee
-            ? `<i class="fa-solid fa-shield-alt" aria-hidden="true"></i><span>12-month link guarantee · ${link}</span>`
+            ? `<i class="fa-solid fa-shield-alt" aria-hidden="true"></i><span>${guaranteeSummary} · ${link}</span>`
             : `<i class="fa-solid fa-circle-info" aria-hidden="true"></i><span>Policy · ${link}</span>`;
         const fullBody = note
             ? `<div class="ov-policy__full is-collapsed" hidden>${escapeHtml(note)} ${link}</div>`
@@ -2752,9 +2766,31 @@ function bootAdvertiserOrdersPage() {
         const revisionHtml = modRequested && it.completion_notes
             ? `<div class="ui-callout ui-callout--attention ui-callout--sm ui-callout--flush mb-2"><span class="ui-callout__icon" aria-hidden="true"><i class="fa-solid fa-circle-exclamation"></i></span><div class="ui-callout__body"><strong>Change request:</strong> ${escapeHtml(it.completion_notes)}</div></div>`
             : '';
+        const isLi = String(it.product_type || '') === 'link_insertion';
         const heading = itemsCount > 1
             ? `<h6 class="mt-2 mb-2">Placement ${idx + 1}${it.site_name ? ` · ${escapeHtml(it.site_name)}` : ''}</h6>`
-            : '<h6>Placement</h6>';
+            : `<h6>${isLi ? 'Link insertion' : 'Placement'}</h6>`;
+        const preferredHtml = isLi && it.preferred_article_url
+            ? `<div class="ov-pair"><span class="ov-pair__label">Preferred article</span><span class="ov-pair__value"><a href="${safeUrl(it.preferred_article_url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(it.preferred_article_url)}</a></span></div>`
+            : '';
+        const sentenceBits = [];
+        if (it.insertion_sentence_same) sentenceBits.push('Same sentence');
+        if (it.insertion_sentence_new) {
+            sentenceBits.push(it.insertion_sentence_new_text
+                ? ('New sentence: ' + String(it.insertion_sentence_new_text))
+                : 'New sentence');
+        }
+        const sentenceHtml = isLi && sentenceBits.length
+            ? `<div class="ov-pair"><span class="ov-pair__label">Insertion</span><span class="ov-pair__value">${escapeHtml(sentenceBits.join(' · '))}</span></div>`
+            : '';
+        const liGuaranteeFee = euroNumber(it.link_guarantee_fee);
+        const liGuaranteeHtml = isLi
+            ? `<div class="ov-pair"><span class="ov-pair__label">Link guarantee</span><span class="ov-pair__value">${
+                (it.link_guarantee === true || it.link_guarantee === 1)
+                    ? ('Yes' + (Number.isFinite(liGuaranteeFee) && liGuaranteeFee > 0 ? ` (+${formatEuro(liGuaranteeFee)})` : '') + ' · permanent')
+                    : 'Not added'
+            }</span></div>`
+            : '';
 
         const siteHtml = it.site_name ? escapeHtml(it.site_name) : (hideEmpty ? '' : '—');
         const hideSiteUrl = !!(it.site_url && liveUrl && urlsMatch(it.site_url, liveUrl));
@@ -2811,6 +2847,9 @@ function bootAdvertiserOrdersPage() {
             <div class="ov-pairs">
                 <div class="ov-pair">${siteHtml ? `<span class="ov-pair__label">Site</span><span class="ov-pair__value">${siteHtml}</span>` : ''}</div>
                 <div class="ov-pair">${siteUrlHtml ? `<span class="ov-pair__label">Site URL</span><span class="ov-pair__value">${siteUrlHtml}</span>` : ''}</div>
+                ${preferredHtml}
+                ${sentenceHtml}
+                ${liGuaranteeHtml}
                 <div class="ov-pair"><span class="ov-pair__label">Anchor text</span><span class="ov-pair__value">${anchorHtml || '—'}</span></div>
                 <div class="ov-pair"><span class="ov-pair__label">Target URL</span><span class="ov-pair__value">${targetHtml || '—'}</span></div>
                 <div class="ov-pair">${featureHtml ? `<span class="ov-pair__label">Feature image</span><span class="ov-pair__value">${featureHtml}</span>` : ''}</div>

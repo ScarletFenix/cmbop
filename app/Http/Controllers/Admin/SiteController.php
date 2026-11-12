@@ -36,6 +36,7 @@ use App\Support\BulkDiscount;
 use App\Support\CatalogHealthQueue;
 use App\Support\CatalogProblemReport;
 use App\Support\CommunityInbox;
+use App\Support\LinkInsertionProduct;
 use App\Support\MarketingOpsQueues;
 use App\Support\MarketplacePicker;
 use App\Support\PublicationDuration;
@@ -670,6 +671,8 @@ class SiteController extends Controller
                 'enrichment_status',
                 'metrics_fetched_at',
                 'copy_strike_hide',
+                'accepts_link_insertions',
+                'link_insertion_price_eur',
             ]);
             foreach ($rows as $site) {
                 $facts = $this->staffListingFacts($site);
@@ -700,6 +703,8 @@ class SiteController extends Controller
                     $this->csvCell($site->enrichment_status),
                     $this->csvCell($facts['metrics_fetched_label']),
                     $this->csvCell($facts['publisher_copy_strike'] ? 'yes' : 'no'),
+                    $this->csvCell(! empty($facts['offers_link_insertion']) ? 'yes' : 'no'),
+                    $this->csvCell($facts['link_insertion_price'] ?? ''),
                 ]);
             }
             fclose($out);
@@ -1546,6 +1551,15 @@ class SiteController extends Controller
             report($e);
         }
 
+        $offersLi = false;
+        $liPrice = null;
+        try {
+            $offersLi = $site->offersLinkInsertions();
+            $liPrice = LinkInsertionProduct::staffListPrice($site);
+        } catch (\Throwable $e) {
+            report($e);
+        }
+
         return [
             'sale_price' => $sale,
             'featured' => $featured,
@@ -1565,6 +1579,8 @@ class SiteController extends Controller
                 ? 'Manual'
                 : ($metricsLabel ? 'Scan' : null),
             'publisher_copy_strike' => $copyStrike,
+            'offers_link_insertion' => $offersLi,
+            'link_insertion_price' => $liPrice,
         ];
     }
 
@@ -2335,6 +2351,7 @@ class SiteController extends Controller
             'featured' => $this->requestFlag($request, 'featured'),
             'bulk_discount' => $this->requestFlag($request, 'bulk_discount'),
             'csv_metrics' => $this->requestFlag($request, 'csv_metrics'),
+            'link_insertion' => $this->requestFlag($request, 'link_insertion'),
             'price_min' => $this->staffOptionalNumber($request->query('price_min', $request->input('price_min'))),
             'price_max' => $this->staffOptionalNumber($request->query('price_max', $request->input('price_max'))),
             'traffic_min' => $this->staffOptionalInt($request->query('traffic_min', $request->input('traffic_min'))),
@@ -2391,6 +2408,7 @@ class SiteController extends Controller
             || ! empty($filter['featured'])
             || ! empty($filter['bulk_discount'])
             || ! empty($filter['csv_metrics'])
+            || ! empty($filter['link_insertion'])
             || ($filter['price_min'] ?? null) !== null
             || ($filter['price_max'] ?? null) !== null
             || ($filter['traffic_min'] ?? null) !== null
@@ -2530,6 +2548,29 @@ class SiteController extends Controller
         if (! empty($filter['csv_metrics'])) {
             if (Site::hasSitesColumn('agency_site_import_id') && Site::hasSitesColumn('metrics_manual')) {
                 $query->where('agency_site_import_id', '>', 0)->where('metrics_manual', 1);
+            } else {
+                $query->whereRaw('1 = 0');
+            }
+        }
+
+        if (! empty($filter['link_insertion'])) {
+            if (Site::hasSitesColumn('accepts_link_insertions')) {
+                $query->where('accepts_link_insertions', true)->where(function ($li) {
+                    $hasPrice = false;
+                    if (Site::hasSitesColumn('listing_link_insertion_price')) {
+                        $li->where('listing_link_insertion_price', '>', 0);
+                        $hasPrice = true;
+                    }
+                    if (Site::hasSitesColumn('link_insertion_price')) {
+                        $hasPrice
+                            ? $li->orWhere('link_insertion_price', '>', 0)
+                            : $li->where('link_insertion_price', '>', 0);
+                        $hasPrice = true;
+                    }
+                    if (! $hasPrice) {
+                        $li->whereRaw('1 = 0');
+                    }
+                });
             } else {
                 $query->whereRaw('1 = 0');
             }
@@ -3110,7 +3151,7 @@ class SiteController extends Controller
             'publish_mode' => StaffListingPublishMode::validationRule(),
             'suggestion_id' => 'nullable|integer',
             'request_source' => 'nullable|string|max:120',
-        ] + $this->placementOfferValidationRules(), array_merge($this->siteImageValidationMessages(), [
+        ] + $this->placementOfferValidationRules() + LinkInsertionProduct::requestValidationRules(), array_merge($this->siteImageValidationMessages(), [
             'written_request.accepted' => 'Confirm you have a written request from this publisher’s account email.',
             'publish_mode.in' => 'Choose Invite to Accept or Publish this site now.',
             'price.max' => 'Price must be at most €999,999.99.',
@@ -3248,7 +3289,7 @@ class SiteController extends Controller
                     'sensitive_prices' => ! empty($sensitivePrices) ? $sensitivePrices : null,
                     'homepage_placement_prices' => ! empty($homepagePrices) ? $homepagePrices : null,
                     'social_promotion' => $socialPromotion,
-                ], StaffListingPublishMode::staffAssignAttributes($publishMode)));
+                ], StaffListingPublishMode::staffAssignAttributes($publishMode), LinkInsertionProduct::persistenceFromInput($request->all())));
 
                 // Hard-set mode + metrics so a missing column skip cannot silently drop them.
                 $price = $request->input('price');
@@ -3261,7 +3302,7 @@ class SiteController extends Controller
                     'metrics_manual' => true,
                     'metrics_provider' => 'manual',
                     'metrics_fetched_at' => now(),
-                ], StaffListingPublishMode::staffAssignAttributes($publishMode)));
+                ], StaffListingPublishMode::staffAssignAttributes($publishMode), LinkInsertionProduct::persistenceFromInput($request->all())));
 
                 if (class_exists(SiteTag::class)) {
                     SiteTag::applyStaffDefault($site, $request->input('site_tag'));
@@ -4803,6 +4844,9 @@ class SiteController extends Controller
         if ($request->boolean('placement_offers_form')) {
             $rules = array_merge($rules, $this->placementOfferValidationRules());
         }
+        if (LinkInsertionProduct::formWasPosted($request->all())) {
+            $rules = array_merge($rules, LinkInsertionProduct::requestValidationRules());
+        }
 
         // site_image is often a stored path string after upload-image; only
         // validate as a file when a real upload is present (handled below).
@@ -5046,6 +5090,10 @@ class SiteController extends Controller
             $data = array_merge($data, $placementPatch);
         }
 
+        if (LinkInsertionProduct::formWasPosted($request->all())) {
+            $data = array_merge($data, LinkInsertionProduct::persistenceFromInput($request->all()));
+        }
+
         if (isset($data['description']) && is_string($data['description'])) {
             $data['description'] = app(SiteDescriptionSanitizer::class)
                 ->sanitize($data['description']);
@@ -5159,6 +5207,9 @@ class SiteController extends Controller
         }
         if ($canFixListing && $request->boolean('placement_offers_form')) {
             $rules = array_merge($rules, $this->placementOfferValidationRules());
+        }
+        if ($canFixListing && LinkInsertionProduct::formWasPosted($request->all())) {
+            $rules = array_merge($rules, LinkInsertionProduct::requestValidationRules());
         }
 
         if ($request->exists('site_name') && is_string($request->input('site_name'))) {
@@ -5321,6 +5372,9 @@ class SiteController extends Controller
             $placementPatch = $this->placementOffersPatch($request);
             if ($placementPatch !== null) {
                 $payload = array_merge($payload, $placementPatch);
+            }
+            if (LinkInsertionProduct::formWasPosted($request->all())) {
+                $payload = array_merge($payload, LinkInsertionProduct::persistenceFromInput($request->all()));
             }
         }
 

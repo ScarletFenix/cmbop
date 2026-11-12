@@ -33,6 +33,7 @@ class LinkGuaranteeRestoreMail extends PlatformMailable
                 'siteName' => $this->item->site_name ?: 'your site',
                 'due' => $due,
                 'tasksUrl' => $this->publisherTasksUrl((int) $this->order->id),
+                'isLinkInsertion' => $this->item->isLinkInsertion(),
                 'brand' => $this->brand(),
             ]);
     }

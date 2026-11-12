@@ -53,6 +53,7 @@ class RobotsTxt
             '/is-seolinkbuildings-safe',
             '/for-agencies',
             '/sponsored-articles',
+            '/link-insertion',
             '/alternatives',
         ];
 

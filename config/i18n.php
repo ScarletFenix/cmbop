@@ -63,6 +63,7 @@ return [
         'is-seolinkbuildings-safe',
         'for-agencies',
         'sponsored-articles',
+        'link-insertion',
         'alternatives',
         'author',
         'founder',

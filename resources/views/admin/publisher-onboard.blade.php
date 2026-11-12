@@ -121,6 +121,10 @@
                             <input type="number" id="price" name="price" class="form-control @error('price') is-invalid @enderror" min="0" step="0.01" value="{{ old_text('price') }}">
                             @error('price')<div class="invalid-feedback">{{ $message }}</div>@enderror
                         </div>
+                        @include('admin.sites.partials.link-insertion-fields', [
+                            'layout' => 'inset',
+                            'site' => null,
+                        ])
                         <div class="col-md-4">
                             <label class="form-label fw-semibold" for="da">DA</label>
                             <input type="number" id="da" name="da" class="form-control" min="0" max="100" value="{{ old_text('da') }}">
@@ -221,7 +225,7 @@
                 <div class="card-body">
                     <h5 class="fw-semibold mb-3">Sites for this publisher</h5>
                     <label class="form-label fw-semibold" for="rows">Paste rows</label>
-                    <textarea id="rows" name="rows" rows="8" class="form-control font-monospace @error('rows') is-invalid @enderror" placeholder="url,price,da,dr,traffic,country,language,site_name,example_url,turnaround,publication,link_type,tag,niches,description">{{ old('rows') }}</textarea>
+                    <textarea id="rows" name="rows" rows="8" class="form-control font-monospace @error('rows') is-invalid @enderror" placeholder="url,price,da,dr,traffic,country,language,site_name,example_url,turnaround,publication,link_type,tag,niches,description[,link_insertion_price]">{{ old('rows') }}</textarea>
                     <div class="form-text mb-3">Same columns as <a href="{{ staff_route('sites.bulk-create') }}">CSV bulk create</a>. Email comes from the publisher field above.</div>
                     @error('rows')<div class="invalid-feedback">{{ $message }}</div>@enderror
                     <label class="form-label fw-semibold" for="csv_file">CSV file</label>

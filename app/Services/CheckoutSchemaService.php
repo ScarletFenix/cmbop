@@ -173,6 +173,14 @@ class CheckoutSchemaService
         $this->addColumn('order_items', 'article_submitted_at', 'timestamp NULL');
         $this->addColumn('order_items', 'article_approved_at', 'timestamp NULL');
         $this->addColumn('order_items', 'writing_reminder_sent_at', 'timestamp NULL');
+        $this->addColumn('order_items', 'product_type', "varchar(32) NOT NULL DEFAULT 'guest_post'");
+        $this->addColumn('order_items', 'preferred_article_url', 'varchar(1000) NULL');
+        $this->addColumn('order_items', 'insertion_sentence_same', 'tinyint(1) NOT NULL DEFAULT 0');
+        $this->addColumn('order_items', 'insertion_sentence_new', 'tinyint(1) NOT NULL DEFAULT 0');
+        $this->addColumn('order_items', 'insertion_sentence_new_text', 'text NULL');
+        $this->addColumn('order_items', 'link_guarantee', 'tinyint(1) NOT NULL DEFAULT 0');
+        $this->addColumn('order_items', 'link_guarantee_fee', 'decimal(10,2) NOT NULL DEFAULT 0');
+        $this->addColumn('order_items', 'link_guarantee_covered_amount', 'decimal(10,2) NOT NULL DEFAULT 0');
     }
 
     private function ensureCheckoutIntentsTable(): void
@@ -303,6 +311,13 @@ class CheckoutSchemaService
         $this->addColumn('sites', 'writing_enabled', 'tinyint(1) NOT NULL DEFAULT 1');
         $this->addColumn('sites', 'writing_fee', 'decimal(10,2) NULL');
         $this->addColumn('sites', 'listing_writing_fee', 'decimal(12,2) NULL');
+        $this->addColumn('sites', 'accepts_link_insertions', 'tinyint(1) NOT NULL DEFAULT 0');
+        $this->addColumn('sites', 'listing_link_insertion_price', 'decimal(10,2) NULL');
+        $this->addColumn('sites', 'link_insertion_price', 'decimal(10,2) NULL');
+        $this->addColumn('sites', 'link_insertion_min_article_age_days', 'int unsigned NULL');
+        $this->addColumn('sites', 'link_insertion_allow_high_traffic', 'tinyint(1) NOT NULL DEFAULT 0');
+        $this->addColumn('sites', 'link_insertion_link_type', "varchar(20) NOT NULL DEFAULT 'dofollow'");
+        $this->addColumn('sites', 'link_insertion_delivery_days', 'int unsigned NOT NULL DEFAULT 7');
     }
 
     /**

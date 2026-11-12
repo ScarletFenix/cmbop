@@ -133,6 +133,10 @@ class HomepageAiVisibility
                 'a' => 'No. Publishers pay nothing to list a site. Create a publisher account, add your website and price, and the team reviews it. After approval the listing can appear in the catalog. When an advertiser orders, funds are held until they approve the live URL, or automatically 72 hours after you submit it. The amount you set is then credited to your EUR wallet.',
             ],
             [
+                'q' => LinkInsertionProduct::faqQuestion(),
+                'a' => LinkInsertionProduct::faqAnswer(),
+            ],
+            [
                 'q' => 'How does ordering, escrow and approval work?',
                 'a' => 'Create an advertiser account, add funds to your EUR wallet, and buy a listing. SEOLinkBuildings holds the payment instead of paying the publisher immediately. The publisher publishes the article and submits the live URL. You review it and approve; only then are funds released. If you do not respond, the order is approved automatically after 72 hours. Do not approve until the URL matches what you ordered.'.$fromClause,
             ],
@@ -226,11 +230,20 @@ class HomepageAiVisibility
             [
                 '@type' => 'Offer',
                 'name' => 'Marketplace guest-post placement',
-                'description' => 'Editorial guest post or sponsored article on a verified publisher site. Price is the listing checkout amount in EUR.',
+                'description' => 'Editorial guest post or sponsored article on a verified publisher site. Price is the listing checkout amount in EUR. Link insertions are a separate product from €15.',
                 'price' => $fromPrice,
                 'priceCurrency' => 'EUR',
                 'availability' => 'https://schema.org/InStock',
                 'url' => function_exists('localized_url') ? localized_url('marketplace') : url('/marketplace'),
+            ],
+            [
+                '@type' => 'Offer',
+                'name' => 'Marketplace link insertion',
+                'description' => 'Insert a link into an existing article. '.LinkInsertionProduct::PERMANENT_COPY,
+                'price' => (string) (int) LinkInsertionProduct::FROM_EUR,
+                'priceCurrency' => 'EUR',
+                'availability' => 'https://schema.org/InStock',
+                'url' => url('/link-insertion'),
             ],
             [
                 '@type' => 'Offer',

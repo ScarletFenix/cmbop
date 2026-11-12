@@ -53,9 +53,11 @@
     }
     $detailRows = \App\Support\MailNotificationPresenter::filledMailRows([
         ['label' => 'Website', 'value' => $live['site_domain'] ?? $live['site_name'] ?? ''],
+        ['label' => 'Product', 'value' => $live['product_type_label'] ?? ''],
         ['label' => 'Live URL', 'value' => $liveDisplay, 'url' => $live['live_url'] ?? null],
         ['label' => 'Order', 'value' => !empty($live['order_number']) ? '#'.$live['order_number'] : ''],
         ['label' => 'Review by', 'value' => $live['review_by'] ?? '', 'emphasis' => !empty($live['review_by'])],
+        ['label' => 'Link guarantee', 'value' => $live['link_guarantee_label'] ?? ''],
         ['label' => 'Homepage placement', 'value' => $live['homepage_placement'] ?? ''],
         ['label' => 'Social promotion', 'value' => $live['social_promotion'] ?? ''],
     ]);

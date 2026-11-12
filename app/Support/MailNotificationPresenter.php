@@ -240,14 +240,40 @@ class MailNotificationPresenter
                 ['label' => 'Payment date', 'value' => $paidDate],
             ];
 
+        $order->loadMissing('items');
+        $item = $order->items->first();
+        $productRow = [];
+        $guaranteeRow = [];
+        if ($item instanceof OrderItem && $item->isLinkInsertion()) {
+            $productRow[] = ['label' => 'Product', 'value' => 'Link insertion'];
+            $fee = round((float) ($item->link_guarantee_fee ?? 0), 2);
+            if ($item->hasPaidLinkGuarantee()) {
+                $guaranteeRow[] = [
+                    'label' => 'Link guarantee',
+                    'value' => $fee > 0
+                        ? 'Permanent add-on ('.static::euro($fee).')'
+                        : 'Permanent add-on',
+                ];
+            } else {
+                $guaranteeRow[] = ['label' => 'Link guarantee', 'value' => 'Not added'];
+            }
+        } elseif ($order->link_guarantee) {
+            $guaranteeRow[] = [
+                'label' => 'Link guarantee',
+                'value' => '12-month add-on',
+            ];
+        }
+
         return static::filledMailRows(array_merge(
             [['label' => 'Order', 'value' => $order->order_number ? '#'.$order->order_number : '']],
             $dateRows,
+            $productRow,
             [
                 ['label' => 'Payment method', 'value' => $method],
                 ['label' => 'Total', 'value' => static::euro($total)],
                 ['label' => 'Reference code', 'value' => trim((string) ($order->reference_code ?? ''))],
-            ]
+            ],
+            $guaranteeRow
         ));
     }
 
@@ -268,6 +294,7 @@ class MailNotificationPresenter
         foreach ($list as $item) {
             $url = static::safeLiveUrl($item->site_url ?? $item->site?->site_url ?? null);
             $domain = static::siteDomain($item) ?: static::siteName($item);
+            $guaranteeFee = round((float) ($item->link_guarantee_fee ?? 0), 2);
             $cards[] = [
                 'site_name' => $domain,
                 'domain' => $domain,
@@ -276,6 +303,11 @@ class MailNotificationPresenter
                 'price' => static::euro(static::advertiserFacingItemPrice($item)),
                 'show_price' => $showPrice,
                 'content_link' => static::safeLiveUrl($item->content_link ?? null),
+                'product_type_label' => $item->productTypeLabel(),
+                'link_guarantee' => $item->hasPaidLinkGuarantee(),
+                'link_guarantee_fee_label' => ($item->hasPaidLinkGuarantee() && $guaranteeFee > 0)
+                    ? static::euro($guaranteeFee)
+                    : null,
             ];
         }
 

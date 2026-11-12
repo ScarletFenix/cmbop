@@ -110,6 +110,9 @@
         if (opts.bulk) {
             body.set('bulk', '1');
         }
+        if (opts.product_type) {
+            body.set('product_type', String(opts.product_type));
+        }
         var qty = parseInt(opts.quantity, 10);
         if (Number.isFinite(qty) && qty > 0) {
             body.set('quantity', String(qty));

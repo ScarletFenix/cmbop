@@ -7,6 +7,7 @@ use App\Models\User;
 use App\Services\Advertiser\AdvertiserCartPersistence;
 use App\Services\Marketplace\WritingFeeService;
 use App\Support\BulkDiscount;
+use App\Support\LinkInsertionProduct;
 use App\Support\ListingMoney;
 
 class CartPricingService
@@ -40,6 +41,7 @@ class CartPricingService
      * math (catalog JS), not on chips / checkout labels.
      *
      * @param  int|string|null  $homepageDays  null/'' with $defaultHomepage → longest free; 0/'none' → none; int → that duration
+     * @param  string  $productType  guest_post (default) or link_insertion
      * @return array{
      *   base: float,
      *   additional: float,
@@ -71,17 +73,26 @@ class CartPricingService
         int|string|null $homepageDays = null,
         bool $defaultHomepage = true,
         ?string $buyerCurrency = null,
+        string $productType = LinkInsertionProduct::GUEST_POST,
     ): array {
         $listing = app(ListingMoney::class);
         $listingCurrency = $site->listingCurrency();
-        $listingBase = $site->listingBaseAmount();
+        $isLinkInsertion = LinkInsertionProduct::isLinkInsertion($productType);
+        $listingBase = $isLinkInsertion
+            ? $site->listingLinkInsertionAmount()
+            : $site->listingBaseAmount();
         $buyerCurrency = $listing->normalizeWallet($buyerCurrency ?? $listing->buyerCurrency());
         $withBuffer = $listing->appliesBuffer($listingCurrency, $buyerCurrency);
         $publisherPrice = $listing->toEuros($listingBase, $listingCurrency, false);
         $advertiserListingEuros = $listing->toEuros($listingBase, $listingCurrency, $withBuffer);
+        if ($isLinkInsertion) {
+            $quantity = 1;
+            $homepageDays = 'none';
+            $defaultHomepage = false;
+        }
         $listingAdditional = $this->resolveListingSensitiveAdditional($site, $sensitiveType);
         $additional = $listing->toEuros($listingAdditional, $listingCurrency, $withBuffer);
-        if ($site->usesPartnerRetailPrice()) {
+        if ($site->usesPartnerRetailPrice() && ! $isLinkInsertion) {
             $publisherPrice = $site->publisherBasePrice();
             $base = round((float) $site->slb_price_publish_eur, 2);
             $advertiserListingEuros = $base;
@@ -113,22 +124,24 @@ class CartPricingService
         $nominalPercent = 0.0;
         $winner = null; // 'custom' | 'bulk' | null
 
-        $custom = $site->activeCustomDiscountPercent();
-        if ($custom !== null) {
-            $nominalPercent = max($nominalPercent, (float) $custom);
-            $winner = 'custom';
-        }
-
-        $bulkPercent = $this->bulkDiscountPercentForQuantity($site, $quantity);
-        if ($bulkPercent !== null) {
-            // Better-of: take the stronger of custom vs bulk (never additive).
-            if ($bulkPercent > $nominalPercent) {
-                $nominalPercent = $bulkPercent;
-                $winner = 'bulk';
-            } elseif ($bulkPercent == $nominalPercent && $custom === null) {
-                $winner = 'bulk';
+        if (! $isLinkInsertion) {
+            $custom = $site->activeCustomDiscountPercent();
+            if ($custom !== null) {
+                $nominalPercent = max($nominalPercent, (float) $custom);
+                $winner = 'custom';
             }
-            // When bulk ≤ custom, custom already winning — keep custom.
+
+            $bulkPercent = $this->bulkDiscountPercentForQuantity($site, $quantity);
+            if ($bulkPercent !== null) {
+                // Better-of: take the stronger of custom vs bulk (never additive).
+                if ($bulkPercent > $nominalPercent) {
+                    $nominalPercent = $bulkPercent;
+                    $winner = 'bulk';
+                } elseif ($bulkPercent == $nominalPercent && $custom === null) {
+                    $winner = 'bulk';
+                }
+                // When bulk ≤ custom, custom already winning — keep custom.
+            }
         }
 
         $discountAmount = round($listTotal * ($nominalPercent / 100), 2);
@@ -572,17 +585,25 @@ class CartPricingService
                 continue;
             }
 
-            $quantity = max(1, (int) ($item['quantity'] ?? 1));
-            $bulkPack = ! empty($item['bulk_pack'])
-                || ($site->joinsBulkDiscount() && $quantity >= \App\Support\BulkDiscount::minQty());
+            $productType = LinkInsertionProduct::normalize($item['product_type'] ?? null);
+            $isLinkInsertion = $productType === LinkInsertionProduct::TYPE;
+            if ($isLinkInsertion && ! $site->offersLinkInsertions()) {
+                $unavailable[] = (string) ($item['name'] ?? $site->site_name);
+
+                continue;
+            }
+            $quantity = $isLinkInsertion ? 1 : max(1, (int) ($item['quantity'] ?? 1));
+            $bulkPack = ! $isLinkInsertion && (! empty($item['bulk_pack'])
+                || ($site->joinsBulkDiscount() && $quantity >= BulkDiscount::minQty()));
             $hasHomepageKey = array_key_exists('homepage_days', $item);
             $pricing = $this->priceForAdvertiser(
                 $site,
                 $item['sensitive_type'] ?? null,
                 $quantity,
-                $item['homepage_days'] ?? null,
-                ! $hasHomepageKey,
-                $this->resolveBuyerCurrency($buyerId)
+                $isLinkInsertion ? 'none' : ($item['homepage_days'] ?? null),
+                $isLinkInsertion ? false : ! $hasHomepageKey,
+                $this->resolveBuyerCurrency($buyerId),
+                $productType
             );
 
             for ($i = 0; $i < $quantity; $i++) {
@@ -612,6 +633,15 @@ class CartPricingService
                     'advertiser_eur_amount' => $pricing['advertiser_eur_amount'] ?? $pricing['total'],
                     'fx_rate' => $pricing['fx_rate'] ?? null,
                     'fx_buffer_percent' => $pricing['fx_buffer_percent'] ?? 0,
+                    'product_type' => $productType,
+                    'preferred_article_url' => trim((string) ($item['preferred_article_url'] ?? '')),
+                    'insertion_sentence_same' => ! empty($item['insertion_sentence_same']),
+                    'insertion_sentence_new' => ! empty($item['insertion_sentence_new']),
+                    'insertion_sentence_new_text' => trim((string) ($item['insertion_sentence_new_text'] ?? '')),
+                    'writing_target_url' => trim((string) ($item['writing_target_url'] ?? '')),
+                    'writing_anchor_text' => trim((string) ($item['writing_anchor_text'] ?? '')),
+                    'content_source' => $item['content_source'] ?? WritingFeeService::SOURCE_BUYER,
+                    'link_guarantee' => ! empty($item['link_guarantee']),
                 ];
             }
         }
@@ -654,15 +684,21 @@ class CartPricingService
                 continue;
             }
 
-            $quantity = max(1, (int) ($item['quantity'] ?? 1));
+            $productType = LinkInsertionProduct::normalize($item['product_type'] ?? null);
+            $isLinkInsertion = $productType === LinkInsertionProduct::TYPE;
+            if ($isLinkInsertion && ! $site->offersLinkInsertions()) {
+                continue;
+            }
+            $quantity = $isLinkInsertion ? 1 : max(1, (int) ($item['quantity'] ?? 1));
             $hasHomepageKey = array_key_exists('homepage_days', $item);
             $pricing = $this->priceForAdvertiser(
                 $site,
                 $item['sensitive_type'] ?? null,
                 $quantity,
-                $item['homepage_days'] ?? null,
-                ! $hasHomepageKey,
-                $this->resolveBuyerCurrency($buyerId)
+                $isLinkInsertion ? 'none' : ($item['homepage_days'] ?? null),
+                $isLinkInsertion ? false : ! $hasHomepageKey,
+                $this->resolveBuyerCurrency($buyerId),
+                $productType
             );
             $unitListWithHomepage = round($pricing['list_total'] + $pricing['homepage_price'], 2);
             $lineTotal = round($pricing['total'] * $quantity, 2);
@@ -710,6 +746,12 @@ class CartPricingService
                 'content_source' => $item['content_source'] ?? WritingFeeService::SOURCE_BUYER,
                 'writing_target_url' => trim((string) ($item['writing_target_url'] ?? '')),
                 'writing_anchor_text' => trim((string) ($item['writing_anchor_text'] ?? '')),
+                'product_type' => $productType,
+                'preferred_article_url' => trim((string) ($item['preferred_article_url'] ?? '')),
+                'insertion_sentence_same' => ! empty($item['insertion_sentence_same']),
+                'insertion_sentence_new' => ! empty($item['insertion_sentence_new']),
+                'insertion_sentence_new_text' => trim((string) ($item['insertion_sentence_new_text'] ?? '')),
+                'link_guarantee' => ! empty($item['link_guarantee']),
             ];
         }
 

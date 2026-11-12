@@ -239,6 +239,41 @@
                                         @endif
                                     </div>
                                 @endif
+                                <div class="mb-2"><span class="text-muted small">Product</span>
+                                    <div>{{ $line->productTypeLabel() }}</div>
+                                </div>
+                                @if($line->isLinkInsertion())
+                                    <div class="mb-2"><span class="text-muted small">Preferred article</span>
+                                        <div>
+                                            @if($line->preferred_article_url)
+                                                <a href="{{ $line->preferred_article_url }}" target="_blank" rel="noopener">{{ $line->preferred_article_url }}</a>
+                                            @else
+                                                <span class="text-muted">—</span>
+                                            @endif
+                                        </div>
+                                    </div>
+                                    <div class="mb-2"><span class="text-muted small">Insertion</span>
+                                        <div>
+                                            @if($line->insertion_sentence_same) Same sentence @endif
+                                            @if($line->insertion_sentence_new)
+                                                @if($line->insertion_sentence_same) · @endif
+                                                New sentence{{ $line->insertion_sentence_new_text ? ': '.$line->insertion_sentence_new_text : '' }}
+                                            @endif
+                                            @if(! $line->insertion_sentence_same && ! $line->insertion_sentence_new)
+                                                —
+                                            @endif
+                                        </div>
+                                    </div>
+                                    <div class="mb-2"><span class="text-muted small">Link guarantee</span>
+                                        <div>
+                                            @if($line->hasPaidLinkGuarantee())
+                                                Yes · €{{ number_format((float) $line->link_guarantee_fee, 2) }} add-on (permanent)
+                                            @else
+                                                Not added — refund only if the publisher rejects the order
+                                            @endif
+                                        </div>
+                                    </div>
+                                @endif
                                 <div class="mb-2"><span class="text-muted small">Anchor text</span>
                                     <div>{{ $briefAnchor ?: '—' }}</div>
                                 </div>

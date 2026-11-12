@@ -78,6 +78,7 @@ The indexable public pages and published blog posts are the sitemap. Account pag
 - [/is-seolinkbuildings-safe](https://seolinkbuildings.com/is-seolinkbuildings-safe)
 - [/for-agencies](https://seolinkbuildings.com/for-agencies)
 - [/sponsored-articles](https://seolinkbuildings.com/sponsored-articles)
+- [/link-insertion](https://seolinkbuildings.com/link-insertion)
 - [/alternatives](https://seolinkbuildings.com/alternatives)
 - [/blog/guest-posting-guide](https://seolinkbuildings.com/blog/guest-posting-guide)
 - [/blog/how-to-get-backlinks](https://seolinkbuildings.com/blog/how-to-get-backlinks)
@@ -508,6 +509,7 @@ Locale mirrors use `/de/`, `/fr/`, `/nl/`, `/es/`, `/pt/`, `/it/`, `/us/`, `/pl/
 
 ## Pricing (snapshot)
 - Marketplace placements: start from €20. Each listing has its own checkout price in EUR (full catalog after login).
+- Link insertions: a separate product from €15. Publishers set their own prices. Permanent — the link stays live as long as the article remains published. Optional paid Link guarantee (10% of the item total) at checkout; without it, a full refund applies only if the publisher rejects the order.
 - New advertisers: promotional welcome credit is spend-only when granted; it is not always offered.
 - Managed Digital PR packages (monthly):
   - Starter: €499

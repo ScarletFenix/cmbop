@@ -585,6 +585,12 @@ class OrderClawbackService
             ]);
         }
 
+        if ($item->isLinkInsertion() && ! $item->hasPaidLinkGuarantee()) {
+            throw ValidationException::withMessages([
+                'order' => 'Link insertions without a paid Link guarantee cannot be refunded after the link goes live. A full refund applies only if the publisher rejects the order.',
+            ]);
+        }
+
         if ($order->status !== 'completed') {
             throw ValidationException::withMessages([
                 'order' => 'Only completed orders can be disputed.',

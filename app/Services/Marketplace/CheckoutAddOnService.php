@@ -5,6 +5,7 @@ namespace App\Services\Marketplace;
 use App\Models\FeatureOfferSetting;
 use App\Models\Site;
 use App\Models\WritingSetting;
+use App\Support\LinkInsertionProduct;
 use App\Support\PublicationDuration;
 use Illuminate\Http\Request;
 
@@ -39,8 +40,34 @@ class CheckoutAddOnService
             $source = $this->normalizeRequestedSource($raw, $site instanceof Site ? $site : null);
 
             $item['content_source'] = $source;
-            $item['link_guarantee'] = $guarantee && $this->siteQualifiesForGuarantee($site instanceof Site ? $site : null);
-            if (self::isWrittenSource($item) && is_array($briefs)) {
+            $productType = LinkInsertionProduct::normalize($item['product_type'] ?? null);
+            $item['product_type'] = $productType;
+            $perItem = $request->input('link_guarantee_items', []);
+            if (LinkInsertionProduct::isLinkInsertion($productType)) {
+                $itemGuarantee = is_array($perItem)
+                    ? filter_var($perItem[$id] ?? $perItem[(string) $id] ?? false, FILTER_VALIDATE_BOOLEAN)
+                    : false;
+            } else {
+                $itemGuarantee = $guarantee;
+            }
+            $item['link_guarantee'] = $itemGuarantee && $this->lineQualifiesForGuarantee($item, $site instanceof Site ? $site : null);
+            if (LinkInsertionProduct::isLinkInsertion($productType)) {
+                $item['content_source'] = WritingFeeService::SOURCE_BUYER;
+                $item['preferred_article_url'] = self::requestMapValue($request, 'preferred_article_url', $id, $item['preferred_article_url'] ?? '');
+                $item['writing_target_url'] = self::requestMapValue($request, 'insertion_target_url', $id, $item['writing_target_url'] ?? '');
+                $item['writing_anchor_text'] = self::requestMapValue($request, 'insertion_anchor_text', $id, $item['writing_anchor_text'] ?? '');
+                $item['insertion_sentence_same'] = self::requestMapBool($request, 'insertion_sentence_same', $id)
+                    || ! empty($item['insertion_sentence_same']);
+                $item['insertion_sentence_new'] = self::requestMapBool($request, 'insertion_sentence_new', $id)
+                    || ! empty($item['insertion_sentence_new']);
+                $item['insertion_sentence_new_text'] = self::requestMapValue(
+                    $request,
+                    'insertion_sentence_new_text',
+                    $id,
+                    $item['insertion_sentence_new_text'] ?? ''
+                );
+            }
+            if (self::isWrittenSource($item) && is_array($briefs) && ! LinkInsertionProduct::isLinkInsertion($productType)) {
                 $brief = $briefs[$id] ?? $briefs[(string) $id] ?? [];
                 $item['writing_target_url'] = is_array($brief) ? trim((string) ($brief['target_url'] ?? '')) : '';
                 $item['writing_anchor_text'] = is_array($brief) ? trim((string) ($brief['anchor_text'] ?? '')) : '';
@@ -70,6 +97,18 @@ class CheckoutAddOnService
         }
 
         return PublicationDuration::qualifiesForLinkGuarantee($site->publication_time);
+    }
+
+    /**
+     * @param  array<string, mixed>  $item
+     */
+    public function lineQualifiesForGuarantee(array $item, ?Site $site): bool
+    {
+        if (LinkInsertionProduct::isLinkInsertion($item)) {
+            return $site instanceof Site && $site->offersLinkInsertions();
+        }
+
+        return $this->siteQualifiesForGuarantee($site);
     }
 
     /**
@@ -118,10 +157,17 @@ class CheckoutAddOnService
     public function decorateOrderItem(array $orderItem, ?array $cartLine, bool $linkGuarantee, ?Request $request = null): array
     {
         $site = $orderItem['site'] ?? null;
+        $productType = LinkInsertionProduct::normalize(
+            $cartLine['product_type'] ?? $orderItem['product_type'] ?? null
+        );
+        $orderItem['product_type'] = $productType;
+        $isLinkInsertion = $productType === LinkInsertionProduct::TYPE;
         $raw = $cartLine['content_source']
             ?? $orderItem['content_source']
             ?? WritingFeeService::SOURCE_BUYER;
-        $source = $this->normalizeRequestedSource((string) $raw, $site instanceof Site ? $site : null);
+        $source = $isLinkInsertion
+            ? WritingFeeService::SOURCE_BUYER
+            : $this->normalizeRequestedSource((string) $raw, $site instanceof Site ? $site : null);
 
         $orderItem['content_source'] = WritingFeeService::SOURCE_BUYER;
         $orderItem['writing_fee'] = 0.0;
@@ -143,13 +189,28 @@ class CheckoutAddOnService
             $orderItem['advertiser_eur_amount'] = $orderItem['price'];
         }
 
+        if ($isLinkInsertion) {
+            $orderItem['content_source'] = WritingFeeService::SOURCE_BUYER;
+            $orderItem['writing_fee'] = 0.0;
+            $orderItem['listing_writing_fee'] = 0.0;
+            $orderItem['preferred_article_url'] = trim((string) ($cartLine['preferred_article_url'] ?? $orderItem['preferred_article_url'] ?? ''));
+            $orderItem['insertion_sentence_same'] = ! empty($cartLine['insertion_sentence_same'] ?? $orderItem['insertion_sentence_same'] ?? false);
+            $orderItem['insertion_sentence_new'] = ! empty($cartLine['insertion_sentence_new'] ?? $orderItem['insertion_sentence_new'] ?? false);
+            $orderItem['insertion_sentence_new_text'] = trim((string) ($cartLine['insertion_sentence_new_text'] ?? $orderItem['insertion_sentence_new_text'] ?? ''));
+            $orderItem['writing_target_url'] = trim((string) ($cartLine['writing_target_url'] ?? $orderItem['writing_target_url'] ?? ''));
+            $orderItem['writing_anchor_text'] = trim((string) ($cartLine['writing_anchor_text'] ?? $orderItem['writing_anchor_text'] ?? ''));
+        }
+
         $placement = round((float) $orderItem['price'], 2);
         $orderItem['link_guarantee'] = false;
         $orderItem['link_guarantee_fee'] = 0.0;
         $orderItem['link_guarantee_covered_amount'] = 0.0;
-        $orderItem['link_guarantee_offered'] = $this->siteQualifiesForGuarantee($site instanceof Site ? $site : null);
+        $orderItem['link_guarantee_offered'] = $this->lineQualifiesForGuarantee($orderItem, $site instanceof Site ? $site : null);
+        $wantGuarantee = $isLinkInsertion
+            ? ! empty($cartLine['link_guarantee'])
+            : ($linkGuarantee || ! empty($cartLine['link_guarantee']));
 
-        if ($linkGuarantee && $placement > 0 && $orderItem['link_guarantee_offered']) {
+        if ($wantGuarantee && $placement > 0 && $orderItem['link_guarantee_offered']) {
             $percent = max(0, (float) config('orders.link_guarantee.percent', 10));
             $fee = round($placement * ($percent / 100), 2);
             $orderItem['link_guarantee'] = true;
@@ -191,11 +252,28 @@ class CheckoutAddOnService
      */
     public function orderItemColumns(array $orderItem): array
     {
-        return [
+        $productType = LinkInsertionProduct::normalize($orderItem['product_type'] ?? null);
+        $columns = [
             'content_source' => $orderItem['content_source'] ?? WritingFeeService::SOURCE_BUYER,
             'writing_fee' => $orderItem['writing_fee'] ?? 0,
             'listing_writing_fee' => $orderItem['listing_writing_fee'] ?? null,
+            'product_type' => $productType,
+            'preferred_article_url' => $orderItem['preferred_article_url'] ?? null,
+            'insertion_sentence_same' => ! empty($orderItem['insertion_sentence_same']),
+            'insertion_sentence_new' => ! empty($orderItem['insertion_sentence_new']),
+            'insertion_sentence_new_text' => $orderItem['insertion_sentence_new_text'] ?? null,
+            'link_guarantee' => ! empty($orderItem['link_guarantee']),
+            'link_guarantee_fee' => $orderItem['link_guarantee_fee'] ?? 0,
+            'link_guarantee_covered_amount' => $orderItem['link_guarantee_covered_amount'] ?? 0,
         ];
+
+        if ($productType === LinkInsertionProduct::TYPE) {
+            $columns['content_source'] = WritingFeeService::SOURCE_BUYER;
+            $columns['writing_fee'] = 0;
+            $columns['listing_writing_fee'] = 0;
+        }
+
+        return $columns;
     }
 
     /**
@@ -238,7 +316,23 @@ class CheckoutAddOnService
         $line['writing_total_label'] = format_money_pay($line['writing_total']);
         $line['writing_target_url'] = trim((string) ($line['writing_target_url'] ?? ''));
         $line['writing_anchor_text'] = trim((string) ($line['writing_anchor_text'] ?? ''));
-        $line['guarantee_offered'] = $this->siteQualifiesForGuarantee($site instanceof Site ? $site : null);
+        $productType = LinkInsertionProduct::normalize($line['product_type'] ?? null);
+        $line['product_type'] = $productType;
+        $isLinkInsertion = $productType === LinkInsertionProduct::TYPE;
+        if ($isLinkInsertion) {
+            $line['content_source'] = WritingFeeService::SOURCE_BUYER;
+            $line['writing_offered'] = false;
+            $line['slb_writing_offered'] = false;
+            $line['writing_fee'] = 0.0;
+            $line['writing_total'] = $unit;
+            $line['writing_total_label'] = format_money_pay($unit);
+            $line['article_choice'] = 'link_insertion';
+            $line['preferred_article_url'] = trim((string) ($line['preferred_article_url'] ?? ''));
+            $line['insertion_sentence_same'] = ! empty($line['insertion_sentence_same']);
+            $line['insertion_sentence_new'] = ! empty($line['insertion_sentence_new']);
+            $line['insertion_sentence_new_text'] = trim((string) ($line['insertion_sentence_new_text'] ?? ''));
+        }
+        $line['guarantee_offered'] = $this->lineQualifiesForGuarantee($line, $site instanceof Site ? $site : null);
         $percent = $this->guaranteePercent();
         $line['guarantee_percent'] = $percent;
         $line['guarantee_fee'] = ($line['guarantee_offered'] && $unit > 0)
@@ -248,9 +342,13 @@ class CheckoutAddOnService
             ? format_money_pay($line['guarantee_fee'])
             : '';
         $line['writing_guarantee_note'] = $line['guarantee_offered']
-            ? $this->guaranteeOptionalText($line['guarantee_fee_label'])
+            ? ($isLinkInsertion
+                ? $this->linkInsertionGuaranteeOptionalText($line['guarantee_fee_label'])
+                : $this->guaranteeOptionalText($line['guarantee_fee_label']))
             : '';
-        $line['article_choice'] = $this->resolvedArticleChoice($line, $source);
+        if (! $isLinkInsertion) {
+            $line['article_choice'] = $this->resolvedArticleChoice($line, $source);
+        }
 
         return $line;
     }
@@ -422,6 +520,25 @@ class CheckoutAddOnService
         return 'Optional '.$months.'-month link guarantee from SEOLinkBuildings. Available only on listings whose publication period is at least 12 months or Permanent — not on 6-month listings. Once a month we fetch the live URL and check that your target URL still appears as a hyperlink. If it is missing, we ask for restore within '.$days.' days. If it is not restored, we refund the guaranteed placement amount to your wallet. This is SEOLinkBuildings’ promise, not the publisher’s. The guarantee fee is '.$percent.'% of the placement total and is paid by you — publishers pay nothing. This is not a ranking, traffic, or indexation promise.';
     }
 
+    public function linkInsertionTermsText(): string
+    {
+        $days = (int) config('orders.link_guarantee.restore_days', 7);
+        $percent = rtrim(rtrim(number_format($this->guaranteePercent(), 2), '0'), '.');
+
+        return 'Optional '.LinkInsertionProduct::GUARANTEE_LABEL.' from SEOLinkBuildings for link insertions. '.LinkInsertionProduct::PERMANENT_COPY.' Once a month we fetch the live URL and check that your target URL still appears as a hyperlink. If it is missing or broken, we first ask the publisher to restore it as early as possible (within '.$days.' days of our notice). If it cannot be restored, we refund the guaranteed placement amount to your wallet. Without this add-on, a full refund applies only if the publisher rejects the order — there is no post-live removal refund. This is SEOLinkBuildings’ promise, not the publisher’s. The fee is '.$percent.'% of the item total and is paid by you — publishers pay nothing. This is not a ranking, traffic, or indexation promise.';
+    }
+
+    public function linkInsertionGuaranteeOptionalText(?string $feeLabel = null): string
+    {
+        $base = 'Optional: add a Link guarantee at checkout';
+        $fee = trim((string) $feeLabel);
+        if ($fee === '') {
+            return $base;
+        }
+
+        return $base.' (+'.ltrim($fee, '+').')';
+    }
+
     public function eligibilityHelpText(): string
     {
         return 'The 12-month link guarantee is only offered on sites that stay live for at least 12 months or permanently.';
@@ -452,6 +569,30 @@ class CheckoutAddOnService
     /**
      * @param  array<string, mixed>  $item
      */
+    private static function requestMapValue(Request $request, string $key, int $id, mixed $fallback = ''): string
+    {
+        $map = $request->input($key, []);
+        if (! is_array($map)) {
+            return trim((string) $fallback);
+        }
+
+        $value = $map[$id] ?? $map[(string) $id] ?? $fallback;
+
+        return trim((string) $value);
+    }
+
+    private static function requestMapBool(Request $request, string $key, int $id): bool
+    {
+        $map = $request->input($key, []);
+        if (! is_array($map)) {
+            return false;
+        }
+
+        $value = $map[$id] ?? $map[(string) $id] ?? false;
+
+        return filter_var($value, FILTER_VALIDATE_BOOLEAN);
+    }
+
     private static function sourceFromItem(array $item): string
     {
         $source = (string) ($item['content_source'] ?? '');
@@ -519,11 +660,15 @@ class CheckoutAddOnService
      */
     private function matchingCartLine(array $cart, int $siteId, array $orderItem): ?array
     {
+        $wantType = LinkInsertionProduct::normalize($orderItem['product_type'] ?? null);
         foreach ($cart as $row) {
             if (! is_array($row)) {
                 continue;
             }
             if ((int) ($row['id'] ?? 0) !== $siteId) {
+                continue;
+            }
+            if (LinkInsertionProduct::normalize($row['product_type'] ?? null) !== $wantType) {
                 continue;
             }
 

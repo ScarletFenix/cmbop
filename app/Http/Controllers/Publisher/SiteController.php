@@ -21,6 +21,7 @@ use App\Services\Marketplace\LanguageCountryMap;
 use App\Services\Marketplace\WritingFeeService;
 use App\Support\FasterPublisherPayoutsBlogPost;
 use App\Support\HowToPriceYourSiteBlogPost;
+use App\Support\LinkInsertionProduct;
 use App\Support\ListingMoney;
 use App\Support\MarketplacePicker;
 use App\Support\MoneyDisplay;
@@ -253,7 +254,7 @@ class SiteController extends Controller
             'social.facebook' => 'nullable|boolean',
             'social.instagram' => 'nullable|boolean',
             'social.x' => 'nullable|boolean',
-        ]);
+        ] + LinkInsertionProduct::requestValidationRules(false));
 
         $validator->after(function ($validator) use ($countryCodes, $languageCodes) {
             $country = $countryCodes[0] ?? null;
@@ -354,6 +355,13 @@ class SiteController extends Controller
                     'turnaround_time' => $request->turnaround_time,
                     'publication_time' => $request->publicationTime,
                     'link_type' => $request->link_type,
+                    'accepts_link_insertions' => $listingFields['accepts_link_insertions'] ?? false,
+                    'listing_link_insertion_price' => $listingFields['listing_link_insertion_price'] ?? null,
+                    'link_insertion_price' => $listingFields['link_insertion_price'] ?? null,
+                    'link_insertion_min_article_age_days' => $listingFields['link_insertion_min_article_age_days'] ?? null,
+                    'link_insertion_allow_high_traffic' => $listingFields['link_insertion_allow_high_traffic'] ?? false,
+                    'link_insertion_link_type' => $listingFields['link_insertion_link_type'] ?? 'dofollow',
+                    'link_insertion_delivery_days' => $listingFields['link_insertion_delivery_days'] ?? 7,
                     'description' => $cleanDescription,
                     'verified' => false,
                     'active' => false,
@@ -881,6 +889,12 @@ class SiteController extends Controller
                 'turnaround_time' => $site->turnaround_time,
                 'publication_time' => $site->publication_time,
                 'link_type' => $site->link_type,
+                'accepts_link_insertions' => (bool) $site->accepts_link_insertions,
+                'link_insertion_price' => $site->listingLinkInsertionAmount() ?: null,
+                'link_insertion_min_article_age_days' => $site->link_insertion_min_article_age_days,
+                'link_insertion_allow_high_traffic' => (bool) $site->link_insertion_allow_high_traffic,
+                'link_insertion_link_type' => $site->link_insertion_link_type ?: 'dofollow',
+                'link_insertion_delivery_days' => (int) ($site->link_insertion_delivery_days ?: 7),
                 'description' => $site->description,
                 'sponsored' => (bool) $site->sponsored,
                 'partner_material' => (bool) $site->partner_material,
@@ -989,7 +1003,7 @@ class SiteController extends Controller
             'social.facebook' => 'nullable|boolean',
             'social.instagram' => 'nullable|boolean',
             'social.x' => 'nullable|boolean',
-        ]);
+        ] + LinkInsertionProduct::requestValidationRules(false));
 
         $validator->after(function ($validator) use ($countryCodes, $languageCodes) {
             $country = $countryCodes[0] ?? null;
@@ -1061,6 +1075,13 @@ class SiteController extends Controller
                     'turnaround_time' => $request->turnaround_time,
                     'publication_time' => $request->publicationTime,
                     'link_type' => $request->link_type,
+                    'accepts_link_insertions' => $listingFields['accepts_link_insertions'] ?? false,
+                    'listing_link_insertion_price' => $listingFields['listing_link_insertion_price'] ?? null,
+                    'link_insertion_price' => $listingFields['link_insertion_price'] ?? null,
+                    'link_insertion_min_article_age_days' => $listingFields['link_insertion_min_article_age_days'] ?? null,
+                    'link_insertion_allow_high_traffic' => $listingFields['link_insertion_allow_high_traffic'] ?? false,
+                    'link_insertion_link_type' => $listingFields['link_insertion_link_type'] ?? 'dofollow',
+                    'link_insertion_delivery_days' => $listingFields['link_insertion_delivery_days'] ?? 7,
                     'description' => $cleanDescription,
                     'sensitive_prices' => ! empty($sensitivePrices) ? $sensitivePrices : null,
                     'homepage_placement_prices' => ! empty($homepagePrices) ? $homepagePrices : null,
@@ -1412,7 +1433,12 @@ class SiteController extends Controller
         $writing = app(WritingFeeService::class)
             ->persistenceFromRequest($request, $site ?? new Site, $country);
 
-        return [
+        $li = LinkInsertionProduct::persistenceFromInput(
+            $request->all(),
+            fn (float $amount) => $listing->toEuros($amount, $currency, false)
+        );
+
+        return array_merge([
             'listing_currency' => $currency,
             'listing_price' => $listingPrice,
             'listing_sensitive_prices' => $listingSensitive !== [] ? $listingSensitive : null,
@@ -1427,7 +1453,7 @@ class SiteController extends Controller
             'writing_enabled' => $writing['writing_enabled'],
             'writing_fee' => $writing['writing_fee'],
             'listing_writing_fee' => $writing['listing_writing_fee'],
-        ];
+        ], $li);
     }
 
     /**
@@ -1634,6 +1660,7 @@ class SiteController extends Controller
             'price_forex',
             'writing_enabled',
             'writing_fee',
+            ...LinkInsertionProduct::csvColumnNames(),
         ];
 
         $example = [
@@ -1660,6 +1687,12 @@ class SiteController extends Controller
             '',
             '1',
             '',
+            '40',
+            '1',
+            'dofollow',
+            '7',
+            '',
+            '0',
         ];
 
         $callback = function () use ($headers, $example) {

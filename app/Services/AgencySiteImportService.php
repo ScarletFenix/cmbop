@@ -12,6 +12,7 @@ use App\Models\Site;
 use App\Models\User;
 use App\Services\Marketplace\CountryLanguagePairs;
 use App\Services\Marketplace\WritingFeeService;
+use App\Support\LinkInsertionProduct;
 use App\Support\PublicationDuration;
 use App\Support\SiteTag;
 use Illuminate\Http\UploadedFile;
@@ -256,6 +257,7 @@ class AgencySiteImportService
                             'writing_enabled' => $parsed['writing_enabled'] ?? true,
                             'writing_fee' => $parsed['writing_fee'] ?? null,
                             'listing_writing_fee' => $parsed['listing_writing_fee'] ?? null,
+                            ...LinkInsertionProduct::persistenceFromInput($parsed),
                             'verified' => false,
                             'active' => false,
                             'enrichment_status' => 'pending',
@@ -468,6 +470,10 @@ class AgencySiteImportService
             }
         }
 
+        foreach (LinkInsertionProduct::csvErrors($data) as $msg) {
+            $errors[] = $msg;
+        }
+
         $sensitivePrices = [];
         foreach (['crypto' => 'price_crypto', 'trading' => 'price_trading', 'CBD' => 'price_CBD', 'forex' => 'price_forex'] as $topic => $col) {
             $val = $data[$col] ?? '';
@@ -521,6 +527,7 @@ class AgencySiteImportService
                 $data,
                 (string) ($languageCodes[0] ?? 'en')
             ),
+            ...LinkInsertionProduct::persistenceFromInput($data),
         ];
     }
 
