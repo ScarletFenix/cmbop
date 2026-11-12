@@ -326,6 +326,64 @@ class CatalogController extends Controller
     }
 
     /**
+     * Filtered-set min advertiser link-insertion price. Uses the cheapest
+     * listing amount, then the same viewer markup as catalog rows — never the
+     * guest-post teaser and never the publisher amount in the UI.
+     *
+     * @param  Builder<Site>  $query
+     */
+    private function catalogLinkInsertionInventoryFrom(Request $request, $query): ?float
+    {
+        $filters = CatalogUrlQuery::fromRequest($request);
+        unset($filters['page'], $filters['sort'], $filters['per_page'], $filters['wizard']);
+        $user = auth()->user();
+        $cacheKey = 'catalog.inventory_from.li.v1.'.sha1(json_encode([
+            $filters,
+            $user instanceof User ? $user->id : 0,
+        ]));
+
+        try {
+            $min = Cache::remember($cacheKey, 60, function () use ($query, $user) {
+                $priceSql = 'link_insertion_price';
+                if (Site::hasSitesColumn('listing_link_insertion_price') && Site::hasSitesColumn('link_insertion_price')) {
+                    $priceSql = 'COALESCE(NULLIF(listing_link_insertion_price, 0), NULLIF(link_insertion_price, 0))';
+                } elseif (Site::hasSitesColumn('listing_link_insertion_price')) {
+                    $priceSql = 'listing_link_insertion_price';
+                }
+
+                $table = $query->getModel()->getTable();
+                $id = (clone $query)
+                    ->whereRaw($priceSql.' > 0')
+                    ->orderByRaw($priceSql.' ASC')
+                    ->orderBy($table.'.id')
+                    ->value($table.'.id');
+                if (! $id) {
+                    return null;
+                }
+
+                $site = Site::query()->find($id);
+                if (! $site instanceof Site) {
+                    return null;
+                }
+
+                $list = (float) ($site->catalogLinkInsertionPricesForViewer(
+                    $user instanceof User ? $user : null
+                )['list'] ?? 0);
+
+                return $list > 0 ? round($list, 2) : null;
+            });
+
+            if ($min !== null && is_numeric($min)) {
+                return round((float) $min, 2);
+            }
+        } catch (\Throwable $e) {
+            Log::warning('Catalog link-insertion inventory min failed', ['error' => $e->getMessage()]);
+        }
+
+        return null;
+    }
+
+    /**
      * Catalog niche options — loaded from the categories table (same source as
      * publisher/admin). Prefer Category::catalogPickerRows() / catalogPickerNames().
      *
@@ -1045,6 +1103,9 @@ class CatalogController extends Controller
 
         // Filtered-set min (advertiser-facing), not the current page min.
         $inventoryFrom = $this->catalogInventoryFrom($request, $query, $advPriceSql, $listingMoney);
+        if ($request->filled('product') && $productFilter === LinkInsertionProduct::TYPE) {
+            $inventoryFrom = $this->catalogLinkInsertionInventoryFrom($request, $query);
+        }
 
         if (Site::hasSitesColumn('featured_until')) {
             $query->orderByRaw(

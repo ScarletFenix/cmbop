@@ -162,6 +162,19 @@ final class LinkInsertionProduct
     }
 
     /**
+     * Catalog / marketplace tab query value. Empty and unknown → guest posts.
+     */
+    public static function catalogTab(mixed $product): string
+    {
+        return self::normalize($product);
+    }
+
+    public static function isCatalogLinkInsertionTab(mixed $product): bool
+    {
+        return self::catalogTab($product) === self::TYPE;
+    }
+
+    /**
      * Optional CSV / paste column names. Blank price = not accepting.
      *
      * @return list<string>

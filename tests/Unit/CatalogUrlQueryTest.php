@@ -50,6 +50,7 @@ class CatalogUrlQueryTest extends TestCase
         $this->assertContains('turnaround_max', CatalogUrlQuery::KEYS);
         $this->assertContains('sensitive_topics', CatalogUrlQuery::KEYS);
         $this->assertContains('google_news', CatalogUrlQuery::KEYS);
+        $this->assertContains('product', CatalogUrlQuery::KEYS);
         $this->assertSame(20, CatalogUrlQuery::perPage(['per_page' => '20']));
         $this->assertSame(10, CatalogUrlQuery::perPage(['per_page' => '10']));
         $this->assertSame(50, CatalogUrlQuery::perPage(['per_page' => '50']));
@@ -140,6 +141,35 @@ class CatalogUrlQueryTest extends TestCase
         $this->assertSame(
             ['da_min' => '50'],
             CatalogUrlQuery::canonicalRedirectParams($request, $originalQuery)
+        );
+    }
+
+    public function test_product_tab_query_is_normalized_and_kept_with_filters(): void
+    {
+        $this->assertSame(
+            ['country' => 'de', 'product' => 'link_insertion'],
+            CatalogUrlQuery::canonicalize([
+                'country' => 'de',
+                'product' => 'link_insertion',
+                'page' => '1',
+            ])
+        );
+        $this->assertSame(
+            ['product' => 'guest_post'],
+            CatalogUrlQuery::canonicalize(['product' => 'guest_post'])
+        );
+        $this->assertSame(
+            ['product' => 'guest_post'],
+            CatalogUrlQuery::canonicalize(['product' => 'all'])
+        );
+        $this->assertSame(
+            ['search' => 'alpha', 'product' => 'link_insertion'],
+            CatalogUrlQuery::except([
+                'search' => 'alpha',
+                'product' => 'link_insertion',
+                'da_min' => '40',
+                'page' => '2',
+            ], ['da_min'])
         );
     }
 }

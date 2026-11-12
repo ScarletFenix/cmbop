@@ -67,6 +67,12 @@ return array_replace(require __DIR__.'/../en/messages.php', [
     'meta_blog_description' => 'Praktyczne przewodniki po artykułach gościnnych, anchorach i AEO/SEO od zespołu SEOLinkBuildings.',
 
     // Advertiser catalog row copy
+    'catalog_tab_guest_posts' => 'Artykuły gościnne',
+    'catalog_tab_link_insertions' => 'Wstawienia linków',
+    'catalog_tab_banners' => 'Bannery / Linki tekstowe',
+    'catalog_tab_coming_soon' => 'Wkrótce',
+    'catalog_tab_aria' => 'Produkty katalogu',
+    'catalog_empty_link_insertions' => 'Żadna witryna nie przyjmuje jeszcze wstawiania linków przy tych filtrach',
     'catalog_price_from' => 'od',
     'catalog_percent_off' => ':percent zniżki',
     'catalog_bulk_when_buying' => '−:percent przy zakupie :qty+',

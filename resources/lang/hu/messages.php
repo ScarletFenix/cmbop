@@ -66,6 +66,12 @@ return array_replace(require __DIR__.'/../en/messages.php', [
     'meta_blog_description' => 'Gyakorlati útmutatók vendégposztról, horgonyszövegről, AEO/SEO-ról a SEOLinkBuildings csapatától.',
 
     // Advertiser catalog row copy
+    'catalog_tab_guest_posts' => 'Vendégcikkek',
+    'catalog_tab_link_insertions' => 'Linkbeszúrások',
+    'catalog_tab_banners' => 'Bannerek / Szöveges linkek',
+    'catalog_tab_coming_soon' => 'Hamarosan',
+    'catalog_tab_aria' => 'Katalógustermékek',
+    'catalog_empty_link_insertions' => 'Még egyetlen oldal sem fogad el linkbeszúrásokat ezekkel a szűrőkkel',
     'catalog_price_from' => 'akár',
     'catalog_percent_off' => ':percent kedvezmény',
     'catalog_bulk_when_buying' => '−:percent :qty+ vásárlásakor',

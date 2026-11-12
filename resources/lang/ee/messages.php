@@ -66,6 +66,12 @@ return array_replace(require __DIR__.'/../en/messages.php', [
     'meta_blog_description' => 'Praktilised juhendid külalispostide, ankurteksti, AEO/SEO ja outreach’i kohta SEOLinkBuildingsilt.',
 
     // Advertiser catalog row copy
+    'catalog_tab_guest_posts' => 'Külalispostitused',
+    'catalog_tab_link_insertions' => 'Lingi sisestused',
+    'catalog_tab_banners' => 'Bännerid / Tekstilingid',
+    'catalog_tab_coming_soon' => 'Varsti',
+    'catalog_tab_aria' => 'Kataloogitooted',
+    'catalog_empty_link_insertions' => 'Ükski sait ei aktsepteeri veel lingi sisestusi nende filtritega',
     'catalog_price_from' => 'alates',
     'catalog_percent_off' => ':percent soodustus',
     'catalog_bulk_when_buying' => '−:percent :qty+ ostmisel',

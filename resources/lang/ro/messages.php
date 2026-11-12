@@ -66,6 +66,12 @@ return array_replace(require __DIR__.'/../en/messages.php', [
     'meta_blog_description' => 'Ghiduri practice despre guest posturi, ancore, AEO/SEO și outreach de la echipa SEOLinkBuildings.',
 
     // Advertiser catalog row copy
+    'catalog_tab_guest_posts' => 'Guest post-uri',
+    'catalog_tab_link_insertions' => 'Inserări de link',
+    'catalog_tab_banners' => 'Bannere / Linkuri text',
+    'catalog_tab_coming_soon' => 'În curând',
+    'catalog_tab_aria' => 'Produse din catalog',
+    'catalog_empty_link_insertions' => 'Niciun site nu acceptă încă inserări de link cu aceste filtre',
     'catalog_price_from' => 'de la',
     'catalog_percent_off' => ':percent reducere',
     'catalog_bulk_when_buying' => '−:percent la cumpărarea a :qty+',

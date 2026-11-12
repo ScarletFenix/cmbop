@@ -47,6 +47,12 @@ return array_replace(require __DIR__.'/../en/messages.php', [
     'pricing_hero_lead' => 'Explore publishers de Portugal, escolha o preço em EUR que encaixe e pague com a carteira.',
 
     // Advertiser catalog row copy
+    'catalog_tab_guest_posts' => 'Guest posts',
+    'catalog_tab_link_insertions' => 'Inserções de link',
+    'catalog_tab_banners' => 'Banners / Links de texto',
+    'catalog_tab_coming_soon' => 'Em breve',
+    'catalog_tab_aria' => 'Produtos do catálogo',
+    'catalog_empty_link_insertions' => 'Nenhum site aceita ainda inserções de link com estes filtros',
     'catalog_price_from' => 'desde',
     'catalog_percent_off' => ':percent de desconto',
     'catalog_bulk_when_buying' => '−:percent ao comprar :qty+',

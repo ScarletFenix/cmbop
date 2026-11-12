@@ -6,6 +6,7 @@
 @push('page-styles')
     <link href="{{ asset('assets/css/single-select.css') }}?v={{ @filemtime(public_path('assets/css/single-select.css')) ?: '1' }}" rel="stylesheet">
     <link href="{{ asset('assets/css/catalog.css') }}?v={{ @filemtime(public_path('assets/css/catalog.css')) ?: '1' }}" rel="stylesheet">
+    <link href="{{ asset('assets/css/catalog-product-tabs.css') }}?v={{ @filemtime(public_path('assets/css/catalog-product-tabs.css')) ?: '1' }}" rel="stylesheet">
     {{-- Critical catalog guards: if a stale CDN copy of catalog.css wins the
          race, Chrome still must not paint a stuck busy layer, teal NEW pills,
          or intrinsic-size metric logos. --}}
@@ -235,7 +236,8 @@
 
     <!-- FILTERS SECTION -->
 @php
-    $moreFilterKeys = ['favorites_filter','blacklist_filter','bulk_deals','da_min','da_max','dr_min','dr_max','traffic_min','traffic_max','new_badge','on_sale','featured','quality','rating_min','has_completions','publication_time','link_type','turnaround_max','sensitive_topics','google_news','product'];
+    $moreFilterKeys = ['favorites_filter','blacklist_filter','bulk_deals','da_min','da_max','dr_min','dr_max','traffic_min','traffic_max','new_badge','on_sale','featured','quality','rating_min','has_completions','publication_time','link_type','turnaround_max','sensitive_topics','google_news'];
+    $catalogProductTab = \App\Support\LinkInsertionProduct::catalogTab(request('product'));
     $moreTagActive = \App\Support\SiteTag::catalogFilterFromRequest(request()) !== null;
     $moreFilterCount = collect($moreFilterKeys)->filter(fn ($k) => filled(request($k)))->count()
         + ($moreTagActive ? 1 : 0);
@@ -361,6 +363,7 @@
                     <div class="card border-0 shadow-sm catalog-filters-card">
                         <div class="card-body py-3">
                 <form method="GET" action="{{ route('advertiser.catalog') }}" id="filterForm">
+                    <input type="hidden" name="product" id="catalogProductInput" value="{{ $catalogProductTab }}">
                     <div class="row g-2 g-md-3 align-items-start">
                         <!-- Primary: Search (site + category/country/language text) -->
                         <div class="col-12 col-sm-6 col-lg-2">
@@ -578,7 +581,7 @@
                                               style="background:var(--brand-primary-bg,#e6f5f5);color:var(--brand-primary,#1a585e);border:1px solid var(--brand-primary-border,#b8e4e4);">{{ $moreFilterCount }}</span>
                                     @endif
                                 </button>
-                                <a href="{{ route('advertiser.catalog') }}"
+                                <a href="{{ route('advertiser.catalog', ['product' => $catalogProductTab]) }}"
                                    class="btn btn-sm btn-cta-tertiary px-1 catalog-reset-filters"
                                    id="catalogResetFilters">
                                     Reset
@@ -606,17 +609,6 @@
                         {{-- DA/DR/traffic are taller (min/max + preset chips). Bottom-aligning
                              this row pulled those cells up so the DA label sat above Tag/Favorites/Blacklist. --}}
                         <div class="row g-3 align-items-start">
-                            <div class="col-6 col-md-4 col-lg-3">
-                                <label class="form-label fw-semibold small text-muted mb-1" for="catalogProductFilter-trigger">Product</label>
-                                @include('advertiser.partials.catalog-theme-select', [
-                                    'selectId' => 'catalogProductFilter',
-                                    'name' => 'product',
-                                    'label' => 'Product',
-                                    'current' => search_text(request('product')),
-                                    'options' => ['' => 'All products', 'link_insertion' => 'Link insertions'],
-                                ])
-                            </div>
-
                             <div class="col-6 col-md-4 col-lg-3">
                                 <label class="form-label fw-semibold small text-muted mb-1" for="catalogTagFilter-trigger">
                                     <abbr class="metric-abbr text-decoration-none" title="{{ \App\Support\SiteTag::FILTER_TOOLTIP }}">Tag</abbr>
@@ -863,7 +855,7 @@
                                    title="Remove this filter">&times;</a>
                             </span>
                         @endforeach
-                        <a href="{{ route('advertiser.catalog') }}" class="small ms-1 catalog-clear-all">Clear all</a>
+                        <a href="{{ route('advertiser.catalog', ['product' => $catalogProductTab]) }}" class="small ms-1 catalog-clear-all">Clear all</a>
                     </div>
                 @endif
                 </div>
@@ -871,6 +863,11 @@
                     </div>
                 </div>
             </div>
+
+            @include('advertiser.partials.catalog-product-tabs', [
+                'context' => 'catalog',
+                'activeProduct' => $catalogProductTab,
+            ])
 
             <div class="catalog-results-bar d-flex flex-wrap align-items-center justify-content-between gap-2 mb-2">
                 <div class="text-muted small" id="catalogResultsCount" data-catalog-results-count>

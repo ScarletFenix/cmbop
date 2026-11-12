@@ -4,6 +4,10 @@
 @section('description', __('messages.meta_marketplace_description'))
 @section('canonical', localized_url('marketplace'))
 
+@push('page_styles')
+    <link href="{{ asset('assets/css/catalog-product-tabs.css') }}?v={{ @filemtime(public_path('assets/css/catalog-product-tabs.css')) ?: '1' }}" rel="stylesheet">
+@endpush
+
 @section('content')
 @include('components.marketing-page-hero', [
     'kicker' => __('messages.marketplace_kicker'),
@@ -30,6 +34,11 @@
             <p class="small text-muted mb-0 mt-2">{{ __('messages.marketplace_catalog_note') }}</p>
         </div>
     @endif
+    @include('advertiser.partials.catalog-product-tabs', [
+        'context' => 'marketplace',
+        'activeProduct' => \App\Support\LinkInsertionProduct::GUEST_POST,
+        'catalogSearch' => $catalogSearch ?? '',
+    ])
     <div class="row g-4 mb-5">
         @foreach(range(1, 3) as $i)
             <div class="col-md-4">
