@@ -160,4 +160,220 @@ final class LinkInsertionProduct
     {
         return self::marketingFromCopy().'. You choose the site, send the URL and anchor, and the publisher inserts your link into an existing article. '.self::PERMANENT_COPY;
     }
+
+    /**
+     * Optional CSV / paste column names. Blank price = not accepting.
+     *
+     * @return list<string>
+     */
+    public static function csvColumnNames(): array
+    {
+        return [
+            'link_insertion_price',
+            'accepts_link_insertions',
+            'link_insertion_link_type',
+            'link_insertion_delivery_days',
+            'link_insertion_min_article_age_days',
+            'link_insertion_allow_high_traffic',
+        ];
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    public static function requestValidationRules(bool $staff = true, string $prefix = ''): array
+    {
+        $max = $staff ? '999999.99' : '99999999.99';
+        $p = $prefix === '' ? '' : rtrim($prefix, '.').'.';
+
+        return [
+            $p.'accepts_link_insertions' => 'nullable|boolean',
+            $p.'link_insertion_price' => 'nullable|numeric|min:0|max:'.$max,
+            $p.'link_insertion_min_article_age_days' => 'nullable|integer|min:0|max:3650',
+            $p.'link_insertion_allow_high_traffic' => 'nullable|boolean',
+            $p.'link_insertion_link_type' => 'nullable|in:dofollow,nofollow',
+            $p.'link_insertion_delivery_days' => 'nullable|integer|min:1|max:60',
+        ];
+    }
+
+    public static function formWasPosted(array $input): bool
+    {
+        if (! empty($input['link_insertion_form'])) {
+            return true;
+        }
+
+        foreach (self::csvColumnNames() as $column) {
+            if (array_key_exists($column, $input)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    public static function inputTruthy(mixed $value): bool
+    {
+        if (is_bool($value)) {
+            return $value;
+        }
+        if (is_int($value) || is_float($value)) {
+            return (float) $value > 0;
+        }
+
+        $text = strtolower(trim((string) $value));
+
+        return in_array($text, ['1', 'true', 'yes', 'y', 'on'], true);
+    }
+
+    /**
+     * Staff and CSV amounts are EUR. Pass $listingToEuros when the posted
+     * price is in the publisher listing currency.
+     *
+     * @param  array<string, mixed>  $input
+     * @param  (callable(float): float)|null  $listingToEuros
+     * @return array<string, mixed>
+     */
+    public static function persistenceFromInput(array $input, ?callable $listingToEuros = null): array
+    {
+        $available = array_values(array_filter(
+            self::siteColumns(),
+            static fn (string $column): bool => Site::hasSitesColumn($column)
+        ));
+        if ($available === []) {
+            return [];
+        }
+
+        $rawPrice = $input['link_insertion_price'] ?? null;
+        $priceText = is_string($rawPrice) || is_numeric($rawPrice) ? trim((string) $rawPrice) : '';
+        $hasNumericPrice = $priceText !== '' && is_numeric($priceText) && (float) $priceText > 0;
+        $accepts = (self::inputTruthy($input['accepts_link_insertions'] ?? null) || $hasNumericPrice)
+            && $hasNumericPrice;
+
+        $cleared = [
+            'accepts_link_insertions' => false,
+            'listing_link_insertion_price' => null,
+            'link_insertion_price' => null,
+            'link_insertion_min_article_age_days' => null,
+            'link_insertion_allow_high_traffic' => false,
+            'link_insertion_link_type' => 'dofollow',
+            'link_insertion_delivery_days' => 7,
+        ];
+        if (! $accepts) {
+            return array_intersect_key($cleared, array_flip($available));
+        }
+
+        $listing = round((float) $priceText, 2);
+        $euros = $listingToEuros !== null
+            ? round((float) $listingToEuros($listing), 2)
+            : $listing;
+
+        $minAge = $input['link_insertion_min_article_age_days'] ?? null;
+        $minAgeText = is_string($minAge) || is_numeric($minAge) ? trim((string) $minAge) : '';
+        $delivery = (int) ($input['link_insertion_delivery_days'] ?? 7);
+        if ($delivery < 1) {
+            $delivery = 7;
+        }
+        if ($delivery > 60) {
+            $delivery = 60;
+        }
+
+        $payload = [
+            'accepts_link_insertions' => true,
+            'listing_link_insertion_price' => $listing,
+            'link_insertion_price' => $euros,
+            'link_insertion_min_article_age_days' => ($minAgeText !== '' && is_numeric($minAgeText))
+                ? max(0, min(3650, (int) $minAgeText))
+                : null,
+            'link_insertion_allow_high_traffic' => self::inputTruthy($input['link_insertion_allow_high_traffic'] ?? null),
+            'link_insertion_link_type' => strtolower(trim((string) ($input['link_insertion_link_type'] ?? 'dofollow'))) === 'nofollow'
+                ? 'nofollow'
+                : 'dofollow',
+            'link_insertion_delivery_days' => $delivery,
+        ];
+
+        return array_intersect_key($payload, array_flip($available));
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     * @return list<string>
+     */
+    public static function csvErrors(array $data): array
+    {
+        $errors = [];
+        $price = trim((string) ($data['link_insertion_price'] ?? ''));
+        if ($price !== '' && (! is_numeric($price) || (float) $price < 0 || (float) $price > 999999.99)) {
+            $errors[] = 'link_insertion_price must be a number between 0 and 999999.99.';
+        }
+
+        $type = strtolower(trim((string) ($data['link_insertion_link_type'] ?? '')));
+        if ($type !== '' && ! in_array($type, ['dofollow', 'nofollow'], true)) {
+            $errors[] = 'link_insertion_link_type must be dofollow or nofollow.';
+        }
+
+        $days = trim((string) ($data['link_insertion_delivery_days'] ?? ''));
+        if ($days !== '' && (! ctype_digit($days) || (int) $days < 1 || (int) $days > 60)) {
+            $errors[] = 'link_insertion_delivery_days must be a whole number from 1 to 60.';
+        }
+
+        $age = trim((string) ($data['link_insertion_min_article_age_days'] ?? ''));
+        if ($age !== '' && (! ctype_digit($age) || (int) $age < 0 || (int) $age > 3650)) {
+            $errors[] = 'link_insertion_min_article_age_days must be a whole number from 0 to 3650.';
+        }
+
+        return $errors;
+    }
+
+    /**
+     * @param  array<string, mixed>  $mapped
+     * @return array<string, string>
+     */
+    public static function csvInputFromMapped(array $mapped): array
+    {
+        $out = [];
+        foreach (self::csvColumnNames() as $column) {
+            if (array_key_exists($column, $mapped)) {
+                $out[$column] = trim((string) $mapped[$column]);
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * Optional LI columns after the 15 positional site columns.
+     *
+     * @param  list<mixed>  $tail
+     * @return array<string, string>
+     */
+    public static function csvInputFromPositionalTail(array $tail): array
+    {
+        $names = self::csvColumnNames();
+        $out = [];
+        foreach (array_values($tail) as $index => $value) {
+            if (! isset($names[$index])) {
+                break;
+            }
+            $out[$names[$index]] = trim((string) $value);
+        }
+
+        return $out;
+    }
+
+    /**
+     * Staff list / export: publisher EUR amount, never advertiser markup.
+     */
+    public static function staffListPrice(?Site $site): ?float
+    {
+        if (! $site instanceof Site || ! $site->offersLinkInsertions()) {
+            return null;
+        }
+
+        $amount = $site->listingLinkInsertionAmount();
+        if ($amount <= 0) {
+            $amount = $site->publisherLinkInsertionPrice();
+        }
+
+        return $amount > 0 ? round($amount, 2) : null;
+    }
 }

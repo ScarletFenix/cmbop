@@ -21,6 +21,7 @@ use App\Services\Marketplace\LanguageCountryMap;
 use App\Services\Marketplace\WritingFeeService;
 use App\Support\FasterPublisherPayoutsBlogPost;
 use App\Support\HowToPriceYourSiteBlogPost;
+use App\Support\LinkInsertionProduct;
 use App\Support\ListingMoney;
 use App\Support\MarketplacePicker;
 use App\Support\MoneyDisplay;
@@ -234,12 +235,6 @@ class SiteController extends Controller
             'turnaround_time' => 'required|string|in:24h,48h,3days,5days,7days',
             'publicationTime' => 'required|string|max:20|'.PublicationDuration::rule(),
             'link_type' => 'required|in:dofollow,nofollow',
-            'accepts_link_insertions' => 'nullable|boolean',
-            'link_insertion_price' => 'nullable|numeric|min:0|max:99999999.99',
-            'link_insertion_min_article_age_days' => 'nullable|integer|min:0|max:3650',
-            'link_insertion_allow_high_traffic' => 'nullable|boolean',
-            'link_insertion_link_type' => 'nullable|in:dofollow,nofollow',
-            'link_insertion_delivery_days' => 'nullable|integer|min:1|max:60',
             'siteDescription' => 'required|string',
             'price_sensitive.*' => 'nullable|numeric|min:0|max:99999999.99',
             'sensitive.crypto' => 'nullable|boolean',
@@ -259,7 +254,7 @@ class SiteController extends Controller
             'social.facebook' => 'nullable|boolean',
             'social.instagram' => 'nullable|boolean',
             'social.x' => 'nullable|boolean',
-        ]);
+        ] + LinkInsertionProduct::requestValidationRules(false));
 
         $validator->after(function ($validator) use ($countryCodes, $languageCodes) {
             $country = $countryCodes[0] ?? null;
@@ -989,12 +984,6 @@ class SiteController extends Controller
             'turnaround_time' => 'required|string|in:24h,48h,3days,5days,7days',
             'publicationTime' => 'required|string|max:20|'.PublicationDuration::rule(),
             'link_type' => 'required|in:dofollow,nofollow',
-            'accepts_link_insertions' => 'nullable|boolean',
-            'link_insertion_price' => 'nullable|numeric|min:0|max:99999999.99',
-            'link_insertion_min_article_age_days' => 'nullable|integer|min:0|max:3650',
-            'link_insertion_allow_high_traffic' => 'nullable|boolean',
-            'link_insertion_link_type' => 'nullable|in:dofollow,nofollow',
-            'link_insertion_delivery_days' => 'nullable|integer|min:1|max:60',
             'siteDescription' => 'required|string',
             'price_sensitive.*' => 'nullable|numeric|min:0|max:99999999.99',
             'sensitive.crypto' => 'nullable|boolean',
@@ -1014,7 +1003,7 @@ class SiteController extends Controller
             'social.facebook' => 'nullable|boolean',
             'social.instagram' => 'nullable|boolean',
             'social.x' => 'nullable|boolean',
-        ]);
+        ] + LinkInsertionProduct::requestValidationRules(false));
 
         $validator->after(function ($validator) use ($countryCodes, $languageCodes) {
             $country = $countryCodes[0] ?? null;
@@ -1444,33 +1433,16 @@ class SiteController extends Controller
         $writing = app(WritingFeeService::class)
             ->persistenceFromRequest($request, $site ?? new Site, $country);
 
-        $acceptsLi = $request->boolean('accepts_link_insertions');
-        $liListing = $request->filled('link_insertion_price')
-            ? round((float) $request->input('link_insertion_price'), 2)
-            : null;
-        if ($acceptsLi && ($liListing === null || $liListing <= 0)) {
-            $acceptsLi = false;
-            $liListing = null;
-        }
+        $li = LinkInsertionProduct::persistenceFromInput(
+            $request->all(),
+            fn (float $amount) => $listing->toEuros($amount, $currency, false)
+        );
 
-        return [
+        return array_merge([
             'listing_currency' => $currency,
             'listing_price' => $listingPrice,
             'listing_sensitive_prices' => $listingSensitive !== [] ? $listingSensitive : null,
             'listing_homepage_prices' => $listingHomepage !== [] ? $listingHomepage : null,
-            'accepts_link_insertions' => $acceptsLi,
-            'listing_link_insertion_price' => $acceptsLi ? $liListing : null,
-            'link_insertion_price' => $acceptsLi && $liListing !== null
-                ? $listing->toEuros($liListing, $currency, false)
-                : null,
-            'link_insertion_min_article_age_days' => $request->filled('link_insertion_min_article_age_days')
-                ? (int) $request->input('link_insertion_min_article_age_days')
-                : null,
-            'link_insertion_allow_high_traffic' => $request->boolean('link_insertion_allow_high_traffic'),
-            'link_insertion_link_type' => $request->input('link_insertion_link_type', 'dofollow') === 'nofollow'
-                ? 'nofollow'
-                : 'dofollow',
-            'link_insertion_delivery_days' => max(1, min(60, (int) $request->input('link_insertion_delivery_days', 7))),
             'price' => $listing->toEuros($listingPrice, $currency, false),
             'sensitive_prices' => $listingSensitive !== []
                 ? $listing->mapToEuros($listingSensitive, $currency, false)
@@ -1481,7 +1453,7 @@ class SiteController extends Controller
             'writing_enabled' => $writing['writing_enabled'],
             'writing_fee' => $writing['writing_fee'],
             'listing_writing_fee' => $writing['listing_writing_fee'],
-        ];
+        ], $li);
     }
 
     /**
@@ -1688,6 +1660,7 @@ class SiteController extends Controller
             'price_forex',
             'writing_enabled',
             'writing_fee',
+            ...LinkInsertionProduct::csvColumnNames(),
         ];
 
         $example = [
@@ -1714,6 +1687,12 @@ class SiteController extends Controller
             '',
             '1',
             '',
+            '40',
+            '1',
+            'dofollow',
+            '7',
+            '',
+            '0',
         ];
 
         $callback = function () use ($headers, $example) {

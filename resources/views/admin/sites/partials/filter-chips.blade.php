@@ -22,6 +22,7 @@
         'featured' => 'Featured',
         'bulk_discount' => 'Bulk discount',
         'csv_metrics' => 'CSV metrics',
+        'link_insertion' => 'Link insertions',
         'archived' => 'Archived',
         'archive_reason' => 'Archive reason',
         'price_min' => 'Price from',
@@ -35,7 +36,7 @@
             continue;
         }
         $value = $listQuery[$key];
-        if (in_array($key, ['below_quality', 'missing_market', 'placeholder', 'missing_cover', 'bulk_request', 'scan_failed', 'copy_strike', 'has_orders', 'featured', 'bulk_discount', 'csv_metrics', 'archived'], true)) {
+        if (in_array($key, ['below_quality', 'missing_market', 'placeholder', 'missing_cover', 'bulk_request', 'scan_failed', 'copy_strike', 'has_orders', 'featured', 'bulk_discount', 'csv_metrics', 'link_insertion', 'archived'], true)) {
             $chipLabels[$key] = $label;
             continue;
         }

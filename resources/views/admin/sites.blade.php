@@ -28,6 +28,7 @@
         'featured' => !empty($staffSiteFilters['featured']) ? 1 : null,
         'bulk_discount' => !empty($staffSiteFilters['bulk_discount']) ? 1 : null,
         'csv_metrics' => !empty($staffSiteFilters['csv_metrics']) ? 1 : null,
+        'link_insertion' => !empty($staffSiteFilters['link_insertion']) ? 1 : null,
         'price_min' => $staffSiteFilters['price_min'] ?? null,
         'price_max' => $staffSiteFilters['price_max'] ?? null,
         'traffic_min' => $staffSiteFilters['traffic_min'] ?? null,
@@ -352,6 +353,7 @@
                         <th class="admin-narrow-col d-none d-lg-table-cell">Tag</th>
                         <th class="admin-narrow-col d-none d-md-table-cell">Traffic</th>
                         <th class="admin-narrow-col">Price</th>
+                        <th class="admin-narrow-col">LI</th>
                         <th class="admin-narrow-col">Listed</th>
                         <th class="admin-actions-col">Actions</th>
                     </tr>
@@ -406,6 +408,7 @@
                         </td>
                         <td class="small d-none d-md-table-cell">@include('admin.sites.partials.row-traffic')</td>
                         <td>@include('admin.sites.partials.row-price')</td>
+                        <td>@include('admin.sites.partials.row-link-insertion')</td>
                         <td class="small">@include('admin.sites.partials.listed-age')</td>
                         <td class="staff-queue-actions">
                             <div class="d-flex flex-wrap gap-1">
@@ -456,7 +459,7 @@
                     </tr>
                 @empty
                     <tr>
-                        <td colspan="11" class="text-center text-muted py-4">
+                        <td colspan="12" class="text-center text-muted py-4">
                             @if($publisherSearch !== '' || count($listQuery) > 0)
                                 Nothing matches these filters.
                                 <a href="{{ staff_route('sites.index', array_filter(['needs_review' => !empty($needsReviewFilterActive) ? 1 : null, 'waiting_on_publisher' => !empty($waitingOnPublisherFilterActive) ? 1 : null, 'flat' => 1])) }}">Clear filters</a>
@@ -743,6 +746,7 @@
                             <th>Site Information</th>
                             <th class="admin-narrow-col">Traffic</th>
                             <th class="admin-narrow-col">Buyer price</th>
+                            <th class="admin-narrow-col">LI</th>
                             <th class="admin-status-col">Status</th>
                             <th class="admin-narrow-col">Listed</th>
                             <th class="admin-actions-col">Actions</th>
@@ -1009,7 +1013,7 @@ function fetchUserSites(id, page){
     }
 
     document.getElementById('sitesTable').innerHTML =
-        `<tr><td colspan="8">Loading...</td></tr>`;
+        `<tr><td colspan="9">Loading...</td></tr>`;
 
     const pageNum = Number(page) > 1 ? Number(page) : 1;
     lastSitesPage = pageNum;
@@ -2509,7 +2513,7 @@ function renderSites(data){
     let html = '';
 
     if(!data.length){
-        html = `<tr><td colspan="8" class="text-center text-muted">No sites found</td></tr>`;
+        html = `<tr><td colspan="9" class="text-center text-muted">No sites found</td></tr>`;
     } else {
 
         data.forEach((site,i) => {
@@ -2755,13 +2759,16 @@ function renderSites(data){
                     <td>${siteInfoHtml}</td>
                     <td>${site.traffic ?? '-'}</td>
                     <td><div>€${site.price ?? '-'}</div>${saleHtml}${offerBadges}</td>
+                    <td>${site.offers_link_insertion
+                        ? `<div class="small"><span class="badge text-bg-success">LI</span> €${Number(site.link_insertion_price).toFixed(2)}</div>`
+                        : '<span class="text-muted">—</span>'}</td>
                     <td>${statusHtml}</td>
                     <td class="small">${listedHtml}</td>
                     <td><div class="d-flex flex-wrap gap-1 align-items-center">${primaryAction}${manageHtml}</div></td>
                 </tr>
 
                 <tr id="details-${site.id}" class="admin-expand-row">
-                    <td colspan="8">
+                    <td colspan="9">
                         <div class="admin-expand-box">
                             <div class="border rounded bg-white shadow-sm p-3">
                                 <div class="row g-3">
@@ -2776,6 +2783,7 @@ function renderSites(data){
                                     <div class="col-md-4"><strong>Link Type</strong><div>${escapeHtml(site.link_type_label || site.link_type || '-')}</div></div>
                                     <div class="col-md-4"><strong>Sponsored</strong><div>${site.sponsored ? 'Yes':'No'}</div></div>
                                     <div class="col-md-4"><strong>Buyer price</strong><div>€${site.price ?? '-'}</div></div>
+                                    <div class="col-md-4"><strong>Link insertion</strong><div>${site.offers_link_insertion ? ('€' + Number(site.link_insertion_price).toFixed(2) + ' (publisher)') : '—'}</div></div>
                                     <div class="col-12"><strong>Description</strong><div class="slb-text-break">${escapeHtml(site.description_textarea || site.description_excerpt || site.description || '-')}</div><a class="small" href="${staffSitesEditUrl(site.id, '#description')}">Edit description</a></div>
                                     ${(site.image_url || siteMediaUrl(site.site_image) || siteStorageUrl(site.site_image)) ? `<div class="col-12"><strong>Site Image</strong><div class="site-preview-detail"><img data-detail-src="${escapeHtml(site.image_url || siteMediaUrl(site.site_image) || siteStorageUrl(site.site_image))}" alt="Site image" loading="lazy" decoding="async"></div></div>` : ''}
                                 </div>

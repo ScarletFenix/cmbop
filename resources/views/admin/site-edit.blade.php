@@ -137,6 +137,11 @@
                             'site' => $site,
                             'editable' => false,
                         ])
+                        @include('admin.sites.partials.link-insertion-fields', [
+                            'layout' => 'inset',
+                            'site' => $site,
+                            'editable' => false,
+                        ])
                         <div class="col-12">
                             @if($site->marketingCanEditDescription())
                                 <form method="POST" action="{{ staff_route('sites.update', $site->id, false) }}">
@@ -316,6 +321,11 @@
                         </div>
 
                         @include('admin.sites.partials.placement-extras', [
+                            'layout' => 'inset',
+                            'site' => $site,
+                        ])
+
+                        @include('admin.sites.partials.link-insertion-fields', [
                             'layout' => 'inset',
                             'site' => $site,
                         ])
@@ -516,6 +526,11 @@
                         </div>
 
                         @include('admin.sites.partials.placement-extras', [
+                            'layout' => 'inset',
+                            'site' => $site,
+                        ])
+
+                        @include('admin.sites.partials.link-insertion-fields', [
                             'layout' => 'inset',
                             'site' => $site,
                         ])

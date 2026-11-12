@@ -1119,6 +1119,7 @@
                     <li><code>link_type</code> = <code>dofollow</code> or <code>nofollow</code></li>
                     <li><code>description</code> must be at least 50 characters</li>
                     <li>Flags (<code>sponsored</code>, <code>partner_material</code>, <code>as_you_prefer</code>) use <code>1</code> / <code>0</code> — set only one</li>
+                    <li>Optional link insertion columns: <code>link_insertion_price</code>, <code>accepts_link_insertions</code>, <code>link_insertion_link_type</code>, <code>link_insertion_delivery_days</code>. Blank price = not accepting.</li>
                 </ul>
                 <details class="mt-2">
                     <summary class="fw-semibold" style="cursor:pointer;">Valid category names, country codes, and language codes</summary>

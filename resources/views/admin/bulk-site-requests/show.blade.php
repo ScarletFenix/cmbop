@@ -162,6 +162,7 @@
                 Optional paste when the listing details differ per site.
                 A cover image cannot be pasted. Valid rows fill the Done form below. Upload each cover there, then Done.
                 Columns: <code>url,price,da,dr,traffic,country,language,site_name,example_url,turnaround,publication,link_type,tag,niches,description</code>
+                Optional: <code>accepts_link_insertions,link_insertion_price,link_insertion_link_type,link_insertion_delivery_days</code> (blank = not accepting). Use a header row for named columns.
                 Niches use <code>|</code> inside that column. The description is the rest of the line.
                 Turnaround is <code>24h</code>, <code>48h</code>, <code>3days</code>, <code>5days</code>, or <code>7days</code>.
                 Publication is {!! \App\Support\PublicationDuration::csvHint() !!}.
@@ -397,6 +398,15 @@
                                                     @error('items.'.$item->id.'.price')
                                                         <div class="invalid-feedback d-block">{{ $message }}</div>
                                                     @enderror
+                                                </div>
+                                                <div class="bulk-done-field bulk-done-field--wide">
+                                                    @include('admin.sites.partials.link-insertion-fields', [
+                                                        'layout' => 'inset',
+                                                        'site' => null,
+                                                        'namePrefix' => 'items['.$item->id.']',
+                                                        'idPrefix' => 'bulk-li-'.$item->id,
+                                                        'editable' => ! $isRejected,
+                                                    ])
                                                 </div>
                                                 <div class="bulk-done-field">
                                                     <label class="form-label" for="bulk-done-country-{{ $item->id }}">Country <span class="text-danger">*</span></label>
@@ -1297,12 +1307,19 @@ document.getElementById('bulkCopySeedStarter')?.addEventListener('click', functi
             const match = name.match(/items\[(\d+)\]/);
             if (!match) return;
             const itemId = match[1];
-            const draftFields = ['site_name', 'price', 'example_url', 'turnaround_time', 'publication_time', 'link_type', 'site_tag', 'description'];
+            const draftFields = ['site_name', 'price', 'example_url', 'turnaround_time', 'publication_time', 'link_type', 'site_tag', 'description', 'link_insertion_price', 'link_insertion_delivery_days', 'link_insertion_min_article_age_days'];
             const extra = {};
             draftFields.forEach(function (field) {
                 const el = row.querySelector('[name*="[' + field + ']"]');
                 extra[field] = el ? el.value : '';
             });
+            const liToggle = row.querySelector('[name*="[accepts_link_insertions]"]');
+            extra.accepts_link_insertions = (liToggle && liToggle.checked) ? '1' : '';
+            extra.link_insertion_form = '1';
+            const liType = row.querySelector('[name*="[link_insertion_link_type]"]:checked') || row.querySelector('[name*="[link_insertion_link_type]"]');
+            extra.link_insertion_link_type = liType ? liType.value : 'dofollow';
+            const liHigh = row.querySelector('[name*="[link_insertion_allow_high_traffic]"]');
+            extra.link_insertion_allow_high_traffic = (liHigh && liHigh.checked) ? '1' : '';
             items[itemId] = Object.assign({
                 language: language ? language.value : '',
                 country: country ? country.value : '',

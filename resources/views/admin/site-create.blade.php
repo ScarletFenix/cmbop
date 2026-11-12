@@ -347,6 +347,8 @@
 
         @include('admin.sites.partials.placement-extras', ['layout' => 'card', 'site' => null])
 
+        @include('admin.sites.partials.link-insertion-fields', ['layout' => 'card', 'site' => null])
+
         <div class="card border-0 shadow-sm mb-3 staff-assign-site-section">
             <div class="card-body">
                 <h5 class="fw-semibold mb-3">Written request</h5>

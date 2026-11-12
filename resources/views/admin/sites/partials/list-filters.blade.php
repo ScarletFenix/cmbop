@@ -13,7 +13,7 @@
     $moreFilterFlags = [
         'below_quality', 'ready_to_activate', 'missing_market', 'placeholder', 'missing_cover',
         'bulk_request', 'scan_failed', 'copy_strike', 'has_orders', 'featured', 'bulk_discount',
-        'csv_metrics', 'archived',
+        'csv_metrics', 'link_insertion', 'archived',
     ];
     $moreFilterCount = 0;
     foreach ($moreFilterKeys as $moreKey) {
@@ -221,6 +221,10 @@
     <label class="form-check small mb-1">
         <input class="form-check-input" type="checkbox" name="csv_metrics" value="1" data-staff-filter="csv_metrics" @checked(!empty($filters['csv_metrics']))>
         CSV metrics
+    </label>
+    <label class="form-check small mb-1">
+        <input class="form-check-input" type="checkbox" name="link_insertion" value="1" data-staff-filter="link_insertion" @checked(!empty($filters['link_insertion']))>
+        Link insertions
     </label>
     @if($mode !== 'flat')
         <label class="form-check small mb-1">

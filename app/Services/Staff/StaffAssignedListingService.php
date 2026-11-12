@@ -6,6 +6,7 @@ use App\Models\Category;
 use App\Models\Site;
 use App\Services\Marketplace\CountryLanguagePairs;
 use App\Services\SiteDescriptionSanitizer;
+use App\Support\LinkInsertionProduct;
 use App\Support\PublicationDuration;
 use App\Support\SiteDescriptionRules;
 use App\Support\SiteTag;
@@ -50,6 +51,7 @@ class StaffAssignedListingService
     {
         $rows = [];
         $lineNo = 0;
+        $headers = null;
         foreach (preg_split('/\R/', $raw) ?: [] as $line) {
             $lineNo++;
             $trimmed = trim($this->stripBom($line));
@@ -58,10 +60,14 @@ class StaffAssignedListingService
             }
             $delimiter = $this->detectDelimiter($trimmed, 'url');
             $parts = str_getcsv($trimmed, $delimiter, '"', '');
-            if ($this->isSiteHeaderRow($parts)) {
+            if ($headers === null && $this->isSiteHeaderRow($parts)) {
+                $headers = $this->normalizeSiteHeaders($parts);
+
                 continue;
             }
-            $rows[] = $this->siteFieldsFromColumns($parts, $delimiter, $lineNo);
+            $rows[] = $headers === null
+                ? $this->siteFieldsFromColumns($parts, $delimiter, $lineNo)
+                : $this->siteFieldsFromMappedRow($parts, $headers, $lineNo);
         }
 
         return $rows;
@@ -72,12 +78,18 @@ class StaffAssignedListingService
      */
     public function rowsFromCsv(UploadedFile $file): array
     {
-        return $this->readCsv($file, function (array $cols, string $delimiter, int $lineNo) {
-            if ($this->isSiteHeaderRow($cols)) {
+        $headers = null;
+
+        return $this->readCsv($file, function (array $cols, string $delimiter, int $lineNo) use (&$headers) {
+            if ($headers === null && $this->isSiteHeaderRow($cols)) {
+                $headers = $this->normalizeSiteHeaders($cols);
+
                 return null;
             }
 
-            return $this->siteFieldsFromColumns($cols, $delimiter, $lineNo);
+            return $headers === null
+                ? $this->siteFieldsFromColumns($cols, $delimiter, $lineNo)
+                : $this->siteFieldsFromMappedRow($cols, $headers, $lineNo);
         }, 'url');
     }
 
@@ -160,6 +172,7 @@ class StaffAssignedListingService
             'site_tag' => (string) ($input['site_tag'] ?? $input['tag'] ?? ''),
             'categories' => (string) $categories,
             'description' => (string) ($input['description'] ?? ''),
+            ...LinkInsertionProduct::csvInputFromMapped($input),
         ];
     }
 
@@ -257,10 +270,14 @@ class StaffAssignedListingService
             $errors[] = $message;
         }
 
+        foreach (LinkInsertionProduct::csvErrors($fields) as $message) {
+            $errors[] = $message;
+        }
+
         return [
             'line' => $line,
             'errors' => $errors,
-            'row' => [
+            'row' => array_merge([
                 'email' => strtolower(trim((string) ($fields['email'] ?? ''))),
                 'name' => trim((string) ($fields['name'] ?? '')),
                 'site_name' => $siteName,
@@ -279,7 +296,7 @@ class StaffAssignedListingService
                 'link_type' => $linkType,
                 'site_tag' => $tag === '' ? null : $tag,
                 'description' => (string) ($fields['description'] ?? ''),
-            ],
+            ], LinkInsertionProduct::persistenceFromInput($fields)),
         ];
     }
 
@@ -327,7 +344,7 @@ class StaffAssignedListingService
             'link_type' => $row['link_type'],
             'description' => $cleanDescription,
             'enrichment_status' => 'pending',
-        ], $modeAttrs));
+        ], $modeAttrs, LinkInsertionProduct::persistenceFromInput($row)));
         $site->forceFill(array_merge([
             'assigned_by_user_id' => $assignedByUserId,
             'da' => $row['da'],
@@ -337,7 +354,7 @@ class StaffAssignedListingService
             'metrics_manual' => true,
             'metrics_provider' => 'manual',
             'metrics_fetched_at' => now(),
-        ], $modeAttrs));
+        ], $modeAttrs, LinkInsertionProduct::persistenceFromInput($row)));
         SiteTag::applyStaffDefault($site, $row['site_tag'] ?? null);
         $site->save();
 
@@ -429,6 +446,15 @@ class StaffAssignedListingService
      * @param  list<mixed>  $cols
      * @return list<string>
      */
+    private function normalizeSiteHeaders(array $cols): array
+    {
+        return array_map(fn ($col) => $this->headerAlias((string) $col), $cols);
+    }
+
+    /**
+     * @param  list<mixed>  $cols
+     * @return list<string>
+     */
     private function normalizeOnboardingHeaders(array $cols): array
     {
         return array_map(fn ($col) => $this->headerAlias((string) $col), $cols);
@@ -447,6 +473,10 @@ class StaffAssignedListingService
             'site_tag' => 'tag',
             'categories', 'niche' => 'niches',
             'example' => 'example_url',
+            'accepts_link_insertion', 'link_insertions' => 'accepts_link_insertions',
+            'li_price' => 'link_insertion_price',
+            'li_link_type' => 'link_insertion_link_type',
+            'li_delivery_days' => 'link_insertion_delivery_days',
             default => $key,
         };
     }
@@ -490,11 +520,18 @@ class StaffAssignedListingService
         $cols = array_map('trim', $raw);
         $niches = $cols[13] ?? '';
         $description = $cols[14] ?? '';
+        $li = [];
         if (count($raw) > 15) {
-            [$niches, $description] = $this->repairNicheAndDescription(array_slice($raw, 13), $delimiter);
+            $resolvedNiches = Category::resolveNicheNames($this->nicheNamesInput($cols[13] ?? ''));
+            if ($resolvedNiches['unknown'] === [] && $resolvedNiches['resolved'] !== []
+                && SiteDescriptionRules::errors((string) ($cols[14] ?? '')) === []) {
+                $li = LinkInsertionProduct::csvInputFromPositionalTail(array_slice($cols, 15));
+            } else {
+                [$niches, $description] = $this->repairNicheAndDescription(array_slice($raw, 13), $delimiter);
+            }
         }
 
-        return [
+        return array_merge([
             '_line' => (string) $line,
             'site_url' => $cols[0] ?? '',
             'price' => $cols[1] ?? '',
@@ -511,7 +548,39 @@ class StaffAssignedListingService
             'site_tag' => $cols[12] ?? '',
             'categories' => $niches,
             'description' => $description,
-        ];
+        ], $li);
+    }
+
+    /**
+     * @param  list<mixed>  $cols
+     * @param  list<string>  $headers
+     * @return array<string, string>
+     */
+    private function siteFieldsFromMappedRow(array $cols, array $headers, int $line): array
+    {
+        $mapped = [];
+        foreach ($headers as $index => $header) {
+            $mapped[$header] = trim((string) ($cols[$index] ?? ''));
+        }
+
+        return array_merge([
+            '_line' => (string) $line,
+            'site_url' => $mapped['url'] ?? '',
+            'price' => $mapped['price'] ?? '',
+            'da' => $mapped['da'] ?? '',
+            'dr' => $mapped['dr'] ?? '',
+            'traffic' => $mapped['traffic'] ?? '',
+            'country' => $mapped['country'] ?? '',
+            'language' => $mapped['language'] ?? '',
+            'site_name' => $mapped['site_name'] ?? '',
+            'example_url' => $mapped['example_url'] ?? '',
+            'turnaround_time' => $mapped['turnaround'] ?? '',
+            'publication_time' => $mapped['publication'] ?? '',
+            'link_type' => $mapped['link_type'] ?? '',
+            'site_tag' => $mapped['tag'] ?? '',
+            'categories' => $mapped['niches'] ?? '',
+            'description' => $mapped['description'] ?? '',
+        ], LinkInsertionProduct::csvInputFromMapped($mapped));
     }
 
     /**
@@ -524,11 +593,18 @@ class StaffAssignedListingService
         $cols = array_map('trim', $raw);
         $niches = $cols[15] ?? '';
         $description = $cols[16] ?? '';
+        $li = [];
         if (count($raw) > 17) {
-            [$niches, $description] = $this->repairNicheAndDescription(array_slice($raw, 15), $delimiter);
+            $resolvedNiches = Category::resolveNicheNames($this->nicheNamesInput($cols[15] ?? ''));
+            if ($resolvedNiches['unknown'] === [] && $resolvedNiches['resolved'] !== []
+                && SiteDescriptionRules::errors((string) ($cols[16] ?? '')) === []) {
+                $li = LinkInsertionProduct::csvInputFromPositionalTail(array_slice($cols, 17));
+            } else {
+                [$niches, $description] = $this->repairNicheAndDescription(array_slice($raw, 15), $delimiter);
+            }
         }
 
-        return [
+        return array_merge([
             '_line' => (string) $line,
             'email' => $cols[0] ?? '',
             'name' => $cols[1] ?? '',
@@ -547,7 +623,7 @@ class StaffAssignedListingService
             'site_tag' => $cols[14] ?? '',
             'categories' => $niches,
             'description' => $description,
-        ];
+        ], $li);
     }
 
     /**
@@ -562,7 +638,7 @@ class StaffAssignedListingService
             $mapped[$header] = trim((string) ($cols[$index] ?? ''));
         }
 
-        return [
+        return array_merge([
             '_line' => (string) $line,
             'email' => $mapped['email'] ?? '',
             'name' => $mapped['name'] ?? '',
@@ -581,7 +657,7 @@ class StaffAssignedListingService
             'site_tag' => $mapped['tag'] ?? '',
             'categories' => $mapped['niches'] ?? '',
             'description' => $mapped['description'] ?? '',
-        ];
+        ], LinkInsertionProduct::csvInputFromMapped($mapped));
     }
 
     /**

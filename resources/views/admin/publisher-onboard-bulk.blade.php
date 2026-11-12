@@ -15,6 +15,7 @@
                 One row per site. Rows with the same email become one publisher and receive one email.
                 Preview first — nothing is saved until you confirm.
                 Columns: email, name, url, price, country, language, da, dr, traffic, site_name, example_url, turnaround, publication, link_type, tag, niches, description.
+                Optional named columns: accepts_link_insertions, link_insertion_price, link_insertion_link_type, link_insertion_delivery_days (blank = not accepting).
             </p>
         </div>
         <div class="d-flex flex-wrap gap-2">

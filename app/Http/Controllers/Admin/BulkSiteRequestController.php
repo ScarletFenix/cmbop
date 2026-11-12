@@ -21,6 +21,7 @@ use App\Services\SiteClaimTransferService;
 use App\Services\SiteDescriptionSanitizer;
 use App\Services\SiteEnrichment\ImageOptimizationService;
 use App\Services\Staff\BulkPublisherReminderService;
+use App\Support\LinkInsertionProduct;
 use App\Support\MarketingOpsQueues;
 use App\Support\MarketplacePicker;
 use App\Support\PublicationDuration;
@@ -1441,6 +1442,17 @@ class BulkSiteRequestController extends Controller
                     $validator->errors()->add('items.'.$itemId.'.price', 'Price must be between 0 and 99999999.99.');
                 }
 
+                foreach (LinkInsertionProduct::csvErrors($row) as $message) {
+                    $field = str_contains($message, 'link_type')
+                        ? 'link_insertion_link_type'
+                        : (str_contains($message, 'delivery')
+                            ? 'link_insertion_delivery_days'
+                            : (str_contains($message, 'min_article')
+                                ? 'link_insertion_min_article_age_days'
+                                : 'link_insertion_price'));
+                    $validator->errors()->add('items.'.$itemId.'.'.$field, $message);
+                }
+
                 foreach (config('site_placement.homepage_days', [1, 7, 30]) as $days) {
                     $flags = is_array($row['homepage'] ?? null) ? $row['homepage'] : [];
                     $amounts = is_array($row['price_homepage'] ?? null) ? $row['price_homepage'] : [];
@@ -1554,6 +1566,7 @@ class BulkSiteRequestController extends Controller
                 'social_promotion' => $this->doneSocialPromotion($row),
                 'site_image_file' => $row['site_image'] ?? null,
                 'kept_image_path' => $this->keptCoverPath((int) $bulkRequest->id, (int) $item->id, $row),
+                ...LinkInsertionProduct::persistenceFromInput($row),
             ];
         }
 
@@ -1715,6 +1728,13 @@ class BulkSiteRequestController extends Controller
                 'site_tag' => $row['site_tag'],
                 'categories' => implode('|', $row['categories'] ?? []),
                 'description' => $row['description'],
+                'accepts_link_insertions' => ! empty($row['accepts_link_insertions']) ? '1' : '',
+                'link_insertion_price' => $row['listing_link_insertion_price'] ?? $row['link_insertion_price'] ?? '',
+                'link_insertion_link_type' => $row['link_insertion_link_type'] ?? 'dofollow',
+                'link_insertion_delivery_days' => $row['link_insertion_delivery_days'] ?? 7,
+                'link_insertion_min_article_age_days' => $row['link_insertion_min_article_age_days'] ?? '',
+                'link_insertion_allow_high_traffic' => ! empty($row['link_insertion_allow_high_traffic']) ? '1' : '',
+                'link_insertion_form' => '1',
             ];
         }
 
@@ -1881,7 +1901,7 @@ class BulkSiteRequestController extends Controller
                     'social_promotion' => $row['social_promotion'] ?? null,
                     'site_image' => $imagePath,
                     'enrichment_status' => 'pending',
-                ], StaffListingPublishMode::bulkDoneAttributes($doneMode), SiteTag::flags(SiteTag::normalize($row['site_tag'] ?? null))));
+                ], StaffListingPublishMode::bulkDoneAttributes($doneMode), SiteTag::flags(SiteTag::normalize($row['site_tag'] ?? null)), LinkInsertionProduct::persistenceFromInput($row)));
                 $site->save();
 
                 $candidates = Site::domainLookupCandidates($domain);
@@ -2244,16 +2264,35 @@ class BulkSiteRequestController extends Controller
         $failures = [];
         $seenDomains = [];
         $lines = preg_split('/\R/', $raw) ?: [];
+        $headers = null;
 
         foreach ($lines as $i => $line) {
             $lineNum = $i + 1;
             $trimmed = trim($line);
-            if ($trimmed === '' || str_starts_with(strtolower($trimmed), 'url')) {
+            if ($trimmed === '') {
                 continue;
             }
 
             $parts = preg_split('/[\t,;]+/', $trimmed) ?: [];
             $parts = array_map('trim', $parts);
+            if ($headers === null && strtolower((string) ($parts[0] ?? '')) === 'url') {
+                $headers = array_map(function ($header) {
+                    $key = strtolower(str_replace([' ', '-'], '_', (string) $header));
+
+                    return match ($key) {
+                        'site_url', 'website', 'website_url' => 'url',
+                        'turnaround_time' => 'turnaround',
+                        'publication_time' => 'publication',
+                        'site_tag' => 'tag',
+                        'categories', 'niche' => 'niches',
+                        'accepts_link_insertion', 'link_insertions' => 'accepts_link_insertions',
+                        'li_price' => 'link_insertion_price',
+                        default => $key,
+                    };
+                }, $parts);
+
+                continue;
+            }
 
             if (count($parts) < 7) {
                 $failures[] = [
@@ -2265,17 +2304,41 @@ class BulkSiteRequestController extends Controller
                 continue;
             }
 
-            [$urlRaw, $priceRaw, $daRaw, $drRaw, $trafficRaw, $countryRaw, $langRaw] = array_slice($parts, 0, 7);
-            $siteName = isset($parts[7]) && $parts[7] !== '' ? $parts[7] : null;
-            $exampleRaw = $parts[8] ?? '';
-            $turnaroundRaw = strtolower($parts[9] ?? '');
-            $publicationRaw = strtolower($parts[10] ?? '');
-            $linkTypeRaw = strtolower($parts[11] ?? '');
-            $tagRaw = strtolower($parts[12] ?? '');
-            $nichesRaw = $parts[13] ?? '';
-            $descriptionRaw = count($parts) >= 15
-                ? trim(implode(',', array_slice($parts, 14)))
-                : '';
+            if (is_array($headers)) {
+                $mapped = [];
+                foreach ($headers as $index => $header) {
+                    $mapped[$header] = (string) ($parts[$index] ?? '');
+                }
+                $urlRaw = $mapped['url'] ?? '';
+                $priceRaw = $mapped['price'] ?? '';
+                $daRaw = $mapped['da'] ?? '';
+                $drRaw = $mapped['dr'] ?? '';
+                $trafficRaw = $mapped['traffic'] ?? '';
+                $countryRaw = $mapped['country'] ?? '';
+                $langRaw = $mapped['language'] ?? '';
+                $siteName = ($mapped['site_name'] ?? '') !== '' ? $mapped['site_name'] : null;
+                $exampleRaw = $mapped['example_url'] ?? '';
+                $turnaroundRaw = strtolower($mapped['turnaround'] ?? '');
+                $publicationRaw = strtolower($mapped['publication'] ?? '');
+                $linkTypeRaw = strtolower($mapped['link_type'] ?? '');
+                $tagRaw = strtolower($mapped['tag'] ?? '');
+                $nichesRaw = $mapped['niches'] ?? '';
+                $descriptionRaw = $mapped['description'] ?? '';
+                $liInput = LinkInsertionProduct::csvInputFromMapped($mapped);
+            } else {
+                [$urlRaw, $priceRaw, $daRaw, $drRaw, $trafficRaw, $countryRaw, $langRaw] = array_slice($parts, 0, 7);
+                $siteName = isset($parts[7]) && $parts[7] !== '' ? $parts[7] : null;
+                $exampleRaw = $parts[8] ?? '';
+                $turnaroundRaw = strtolower($parts[9] ?? '');
+                $publicationRaw = strtolower($parts[10] ?? '');
+                $linkTypeRaw = strtolower($parts[11] ?? '');
+                $tagRaw = strtolower($parts[12] ?? '');
+                $nichesRaw = $parts[13] ?? '';
+                $descriptionRaw = (string) ($parts[14] ?? '');
+                $liInput = count($parts) > 15
+                    ? LinkInsertionProduct::csvInputFromPositionalTail(array_slice($parts, 15))
+                    : [];
+            }
 
             $siteUrl = $this->normalizeHttpUrl($urlRaw);
             $host = parse_url($siteUrl, PHP_URL_HOST);
@@ -2325,7 +2388,10 @@ class BulkSiteRequestController extends Controller
 
             $categories = [];
             $exampleUrl = '';
-            if (count($parts) < 15) {
+            $hasFullListing = is_array($headers)
+                ? ($exampleRaw !== '' && $descriptionRaw !== '' && $nichesRaw !== '')
+                : count($parts) >= 15;
+            if (! $hasFullListing) {
                 $errors[] = 'Add site name, example URL, turnaround (24h, 48h, 3days, 5days, or 7days), publication ('.str_replace('`', '', PublicationDuration::csvHint()).'), link type (dofollow or nofollow), tag (none, sponsored, partner_material, or as_you_prefer), niches separated by |, and a description of at least '.SiteDescriptionRules::MIN_CHARS.' characters.';
             } else {
                 $exampleUrl = $this->normalizeHttpUrl($exampleRaw);
@@ -2358,6 +2424,9 @@ class BulkSiteRequestController extends Controller
                 if (! SiteDescriptionRules::isValid($descriptionRaw)) {
                     $errors[] = 'Description must be at least '.SiteDescriptionRules::MIN_CHARS.' characters';
                 }
+                foreach (LinkInsertionProduct::csvErrors($liInput) as $message) {
+                    $errors[] = $message;
+                }
             }
 
             if ($errors !== []) {
@@ -2377,7 +2446,7 @@ class BulkSiteRequestController extends Controller
             }
             $seenDomains[$domain] = true;
 
-            $rows[] = [
+            $rows[] = array_merge([
                 'line' => $lineNum,
                 'site_url' => $siteUrl,
                 'domain' => $domain,
@@ -2396,7 +2465,7 @@ class BulkSiteRequestController extends Controller
                 'categories' => $categories,
                 'category' => implode('|', $categories),
                 'description' => $descriptionRaw,
-            ];
+            ], LinkInsertionProduct::persistenceFromInput($liInput));
         }
 
         return compact('rows', 'failures');
