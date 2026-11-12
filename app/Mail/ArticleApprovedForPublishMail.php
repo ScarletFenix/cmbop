@@ -22,7 +22,7 @@ class ArticleApprovedForPublishMail extends PlatformMailable
 
     public function build()
     {
-        return $this->subject('Article ready to publish — order #'.$this->order->order_number)
+        return $this->subject($this->siteNamedSubject('Article ready to publish on {site}', $this->order, $this->item))
             ->markdown('emails.publisher.article-approved-for-publish', [
                 'firstName' => $this->firstName($this->publisher),
                 'orderNumber' => $this->order->order_number,

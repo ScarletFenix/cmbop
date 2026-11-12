@@ -56,7 +56,12 @@ class LiveUrlSubmitted extends PlatformMailable
             'ctaUrl' => $this->advertiserOrdersUrl((int) $order->id),
         ], true);
 
-        return $this->subject('Live URL submitted — order #'.$order->order_number)
+        return $this->subject($this->siteNamedSubject(
+            'Your article is live on {site} – please review',
+            $order,
+            $this->orderItem,
+            $this->site,
+        ))
             ->markdown('emails.publisher.live_url_submitted')
             ->with([
                 'firstName' => $this->firstName($advertiser),

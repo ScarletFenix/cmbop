@@ -52,10 +52,7 @@ class WeeklyNewSitesDigestMail extends PlatformMailable
             $message->getHeaders()->addTextHeader('List-Unsubscribe-Post', 'List-Unsubscribe=One-Click');
         });
 
-        $count = $this->cards->count();
-        $subject = $count === 1
-            ? 'A new site matches your placements'
-            : $count.' new sites match your placements';
+        $subject = 'New sites in your niches';
 
         return $this->subject($subject)
             ->view('emails.advertiser.weekly-new-sites-digest', $this->viewData($unsub, $prefs))

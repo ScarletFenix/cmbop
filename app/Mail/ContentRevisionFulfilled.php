@@ -19,7 +19,7 @@ class ContentRevisionFulfilled extends PlatformMailable
 
     public function build()
     {
-        return $this->subject('Revised article ready — Order #'.$this->order->order_number)
+        return $this->subject($this->siteNamedSubject('Revised article ready on {site}', $this->order, $this->orderItem, $this->site))
             ->markdown('emails.publisher.content_revision_fulfilled');
     }
 }

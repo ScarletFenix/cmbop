@@ -119,18 +119,35 @@ class TransactionalMailLayoutTest extends TestCase
             'Header should use the 3px accent border'
         );
         $this->assertStringContainsString('color-scheme', $html);
-        $this->assertStringContainsString('Article live', $html);
+        $this->assertStringContainsString('ARTICLE LIVE', $html);
+        $this->assertStringContainsString('Your article is live on layout-mag.example', $html);
+        $this->assertStringContainsString('Please check it and approve, or ask for corrections.', $html);
+        $this->assertStringNotContainsString('Your article is live — #ORD-LAYOUT-1', $html);
         $this->assertStringContainsString('Approve article', $html);
         $this->assertStringContainsString('Request corrections', $html);
-        $this->assertStringContainsString('Your payment stays protected until you approve the live article', $html);
+        $this->assertStringContainsString('mail-btn-row', $html);
+        $this->assertStringContainsString('mail-btn-cell', $html);
+        $this->assertStringContainsString('Your payment stays protected', $html);
+        $this->assertStringContainsString('until you approve the live article', $html);
         $this->assertStringContainsString('No action by the deadline? The order is approved automatically.', $html);
-        $this->assertStringContainsString('Layout Mag', $html);
+        $this->assertStringContainsString('layout-mag.example', $html);
+        $this->assertStringNotContainsString('Layout Mag (layout-mag.example)', $html);
         $this->assertStringContainsString('href="https://layout-mag.example/guest-post"', $html);
-        $this->assertStringContainsString('>https://layout-mag.example/guest-post</a>', $html);
+        $this->assertStringContainsString('>layout-mag.example/guest-post</a>', $html);
+        $this->assertStringContainsString('Anchor text:', $html);
         $this->assertStringContainsString('European guest posts', $html);
         $this->assertStringContainsString('href="https://advertiser.example/offer"', $html);
         $this->assertStringContainsString('#ORD-LAYOUT-1', $html);
         $this->assertStringContainsString('Published', $html);
+        $this->assertStringContainsString('mail-progress-line', $html);
+        $this->assertStringContainsString('mail-progress-current', $html);
+        $this->assertTrue(
+            str_contains($html, '2px solid #0b6266')
+            || str_contains($html, '2px solid #0B6266')
+            || str_contains($html, 'border-color:#0b6266'),
+            'Current progress step should be a teal ring'
+        );
+        $this->assertStringContainsString('#b45309', $html);
         $this->assertStringContainsString('Questions? Just reply to this email', $html);
         $this->assertStringContainsString('support@seolinkbuildings.com', $html);
         $this->assertStringContainsString('European guest post marketplace', $html);
@@ -142,9 +159,9 @@ class TransactionalMailLayoutTest extends TestCase
         $this->assertStringNotContainsString('Jules', $html);
         $this->assertStringNotContainsString('€120', $html);
         $this->assertStringNotContainsString('€25', $html);
-        $this->assertStringNotContainsString('Dofollow verified', $html);
+        $this->assertStringContainsString('Dofollow verified', $html);
         $this->assertStringNotContainsString('Unsubscribe', $html);
-        $this->assertMatchesRegularExpression('/\d{1,2} [A-Z][a-z]{2} \d{4}, \d{1,2}:\d{2} [AP]M \((UTC|GMT|PKT)\)/', $html);
+        $this->assertMatchesRegularExpression('/\d{1,2} [A-Z][a-z]{2} \d{4}, \d{2}:\d{2} (UTC|GMT|PKT)/', $html);
         $this->assertStringContainsString('mail-tick', $html);
         $this->assertStringContainsString('✓', $html);
         $this->assertStringNotContainsString('success-check.gif', $html);
@@ -168,7 +185,8 @@ class TransactionalMailLayoutTest extends TestCase
         $html = (new OrderPaymentConfirmed($this->order->fresh(['user', 'items'])))->render();
 
         $this->assertStringContainsString('https://seolinkbuildings.com/assets/img/logo1.png', $html);
-        $this->assertStringContainsString('Order placed', $html);
+        $this->assertStringContainsString('ORDER PLACED', $html);
+        $this->assertStringContainsString('Order placed for layout-mag.example', $html);
         $this->assertStringContainsString('Placed', $html);
         $this->assertStringContainsString('Accepted', $html);
         $this->assertStringNotContainsString('>Writing<', $html);
@@ -198,8 +216,9 @@ class TransactionalMailLayoutTest extends TestCase
             'pending',
         ))->render();
 
-        $this->assertStringContainsString('Order placed', $html);
-        $this->assertStringContainsString('New order created', $html);
+        $this->assertStringContainsString('ORDER PLACED', $html);
+        $this->assertStringContainsString('Order placed for layout-mag.example', $html);
+        $this->assertStringNotContainsString('New order created', $html);
         $this->assertStringContainsString('Hello,', $html);
         $this->assertStringNotContainsString('Hello Ada', $html);
         $this->assertStringNotContainsString('Jules', $html);
@@ -235,7 +254,7 @@ class TransactionalMailLayoutTest extends TestCase
             'reference_code' => 'DEP-LAYOUT',
         ]);
         $html = (new DepositApproved($deposit->fresh('user')))->render();
-        $this->assertStringContainsString('Wallet top-up', $html);
+        $this->assertStringContainsString('WALLET TOP-UP', $html);
         $this->assertStringContainsString('€50.00', $html);
         $this->assertStringNotContainsString('Teqno Ltd', $html);
     }
@@ -287,10 +306,24 @@ class TransactionalMailLayoutTest extends TestCase
 
     public function test_theme_does_not_invent_dofollow_from_listing_type(): void
     {
-        $this->assertFalse(TransactionalMailTheme::articleLivePayload([
+        $payload = TransactionalMailTheme::articleLivePayload([
             'order' => $this->order->fresh(['items.site']),
             'orderItem' => $this->item->fresh(['site']),
-        ])['dofollow_verified']);
+        ]);
+        $this->assertFalse($payload['dofollow_verified']);
+        $this->assertTrue($payload['show_dofollow_pill']);
+    }
+
+    public function test_article_live_subject_names_the_site_not_the_order_number(): void
+    {
+        $mail = (new LiveUrlSubmitted(
+            $this->order->fresh(['user', 'items.site']),
+            $this->item->fresh(['site']),
+            $this->site,
+            $this->item->live_url,
+        ))->build();
+
+        $this->assertSame('Your article is live on layout-mag.example – please review', $mail->subject);
     }
 
     public function test_review_deadline_uses_recipient_timezone_when_present(): void
@@ -304,7 +337,7 @@ class TransactionalMailLayoutTest extends TestCase
             $this->item->live_url,
         ))->render();
 
-        $this->assertMatchesRegularExpression('/\d{1,2} [A-Z][a-z]{2} \d{4}, \d{1,2}:\d{2} [AP]M \(PKT\)/', $html);
+        $this->assertMatchesRegularExpression('/\d{1,2} [A-Z][a-z]{2} \d{4}, \d{2}:\d{2} PKT/', $html);
     }
 
     public function test_order_preview_fixture_item_price_matches_total(): void

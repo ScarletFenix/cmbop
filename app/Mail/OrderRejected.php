@@ -5,6 +5,7 @@ namespace App\Mail;
 use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\Site;
+use App\Support\MailNotificationPresenter;
 
 class OrderRejected extends PlatformMailable
 {
@@ -29,7 +30,20 @@ class OrderRejected extends PlatformMailable
 
     public function build()
     {
-        return $this->subject('Order Rejected - #'.$this->order->order_number)
-            ->markdown('emails.publisher.order_rejected');
+        $website = MailNotificationPresenter::orderSiteHeadline($this->order, $this->orderItem, $this->site);
+
+        return $this->subject($this->siteNamedSubject('{site} did not accept your order', $this->order, $this->orderItem, $this->site))
+            ->markdown('emails.publisher.order_rejected')
+            ->with([
+                'order' => $this->order,
+                'orderItem' => $this->orderItem,
+                'site' => $this->site,
+                'reason' => $this->reason,
+                'detailRows' => MailNotificationPresenter::filledMailRows([
+                    ['label' => 'Website', 'value' => $website],
+                    ['label' => 'Order', 'value' => $this->order->order_number ? '#'.$this->order->order_number : ''],
+                ]),
+                'ctaUrl' => $this->customerFacingRoute('advertiser.catalog'),
+            ]);
     }
 }

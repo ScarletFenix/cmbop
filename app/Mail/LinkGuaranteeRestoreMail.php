@@ -26,7 +26,7 @@ class LinkGuaranteeRestoreMail extends PlatformMailable
     {
         $due = $this->restoreDueAt->timezone(config('app.timezone'))->format('j M Y');
 
-        return $this->subject('Restore the live link for order #'.$this->order->order_number)
+        return $this->subject($this->siteNamedSubject('Restore the live link on {site}', $this->order, $this->item))
             ->markdown('emails.publisher.link-guarantee-restore', [
                 'firstName' => $this->firstName($this->publisher),
                 'orderNumber' => $this->order->order_number,

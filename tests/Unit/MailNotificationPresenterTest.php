@@ -28,7 +28,7 @@ class MailNotificationPresenterTest extends TestCase
         $label = MailNotificationPresenter::formatDateTime('2026-11-07 12:00:00');
 
         $this->assertStringContainsString('2026', $label);
-        $this->assertMatchesRegularExpression('/^7 Nov 2026, 12:00 PM \((UTC|GMT)\)$/', $label);
+        $this->assertMatchesRegularExpression('/^7 Nov 2026, 12:00 (UTC|GMT)$/', $label);
     }
 
     public function test_datetime_uses_recipient_timezone_when_present(): void
@@ -37,7 +37,7 @@ class MailNotificationPresenterTest extends TestCase
         $user->setAttribute('timezone', 'Asia/Karachi');
         $label = MailNotificationPresenter::formatDateTime('2026-11-07 12:00:00', $user);
 
-        $this->assertMatchesRegularExpression('/7 Nov 2026, \d{1,2}:\d{2} [AP]M \(PKT\)/', $label);
+        $this->assertMatchesRegularExpression('/7 Nov 2026, \d{2}:\d{2} PKT/', $label);
     }
 
     public function test_live_url_rejects_unsafe_and_non_http_values(): void
@@ -59,6 +59,8 @@ class MailNotificationPresenterTest extends TestCase
         $this->assertNotNull($at);
         $this->assertSame('2026-11-04 12:00:00', $at->timezone('UTC')->format('Y-m-d H:i:s'));
         $this->assertFalse(MailNotificationPresenter::dofollowVerified($item));
+        $this->assertSame('example.com/post', MailNotificationPresenter::displayUrl('https://example.com/post'));
+        $this->assertSame('news.example', MailNotificationPresenter::bareHost('https://www.news.example/path'));
     }
 
     public function test_legal_identity_normalizes_partners_with_wording(): void

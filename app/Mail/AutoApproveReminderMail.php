@@ -40,7 +40,12 @@ class AutoApproveReminderMail extends PlatformMailable
             'ctaUrl' => $ordersUrl,
         ], true);
 
-        return $this->subject('1 day left to review order #'.$this->order->order_number)
+        return $this->subject($this->siteNamedSubject(
+            '1 day left to review {site}',
+            $this->order,
+            $this->orderItem,
+            $this->site,
+        ))
             ->markdown('emails.advertiser.auto-approve-reminder', [
                 'order' => $this->order,
                 'orderItem' => $this->orderItem,

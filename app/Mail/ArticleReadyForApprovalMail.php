@@ -22,7 +22,7 @@ class ArticleReadyForApprovalMail extends PlatformMailable
 
     public function build()
     {
-        return $this->subject('Article ready for approval — order #'.$this->order->order_number)
+        return $this->subject($this->siteNamedSubject('Article ready for approval on {site}', $this->order, $this->item))
             ->markdown('emails.advertiser.article-ready-for-approval', [
                 'firstName' => $this->firstName($this->advertiser),
                 'orderNumber' => $this->order->order_number,

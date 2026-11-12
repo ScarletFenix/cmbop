@@ -116,8 +116,7 @@ class MailNotificationAuditTest extends TestCase
             'review',
         ))->render();
 
-        $this->assertStringContainsString('Ready for review', $html);
-        $this->assertStringContainsString('Inka Magazin', $html);
+        $this->assertStringContainsString('Your article is live on inkamagazin.example', $html);
         $this->assertStringContainsString('inkamagazin.example', $html);
         $this->assertStringContainsString($longUrl, $html);
         $this->assertStringContainsString('href="'.$longUrl.'"', $html);
@@ -162,7 +161,7 @@ class MailNotificationAuditTest extends TestCase
         $adminHtml = (new OrderStatusChanged($fresh, $this->admin, 'admin', 'status', 'pending', 'processing'))->render();
 
         foreach ([$publisherHtml, $adminHtml] as $html) {
-            $this->assertStringContainsString('Inka Magazin', $html);
+            $this->assertStringContainsString('inkamagazin.example', $html);
             $this->assertStringContainsString('#ORD-MAIL-1', $html);
             $this->assertStringNotContainsString('Arslan', $html);
             $this->assertStringNotContainsString('>Advertiser<', $html);
@@ -238,7 +237,8 @@ class MailNotificationAuditTest extends TestCase
         ))->render();
 
         $this->assertStringContainsString('https://one.example/live-one', $html);
-        $this->assertStringContainsString('Site Two', $html);
+        $this->assertStringContainsString('2 sites', $html);
+        $this->assertStringContainsString('two.example', $html);
         $this->assertStringContainsString('Not submitted yet', $html);
         $this->assertStringNotContainsString('https://two.example/live-one', $html);
     }

@@ -13,7 +13,7 @@
 <p style="margin:0 0 4px;color:#1a585e;font-size:14px;font-weight:600;">{{ $urlHeading }}</p>
 @if(filled($liveUrl))
 <p style="margin:0 0 16px;font-size:15px;line-height:1.5;word-break:break-all;overflow-wrap:anywhere;">
-<a class="mail-url" href="{{ $liveUrl }}" style="color:#1a585e;word-break:break-all;overflow-wrap:anywhere;">{{ $liveUrl }}</a>
+<a class="mail-url" href="{{ $liveUrl }}" style="color:#1a585e;word-break:break-all;overflow-wrap:anywhere;">{{ \App\Support\MailNotificationPresenter::displayUrl($liveUrl) ?: $liveUrl }}</a>
 </p>
 @else
 <p style="margin:0 0 16px;color:#64748b;font-size:15px;line-height:1.5;">{{ $missingLabel }}</p>

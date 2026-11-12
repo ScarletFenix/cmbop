@@ -31,7 +31,11 @@ class ManagedOrderLiveUrlMail extends PlatformMailable
             'ctaUrl' => $ctaUrl,
         ], true);
 
-        return $this->subject('Your article is live · #'.$this->order->order_number)
+        return $this->subject($this->siteNamedSubject(
+            'Your article is live on {site} – please review',
+            $this->order,
+            $this->orderItem,
+        ))
             ->markdown('emails.advertiser.managed-order-live-url')
             ->with([
                 'firstName' => $this->firstName($this->order->user),

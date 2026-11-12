@@ -137,10 +137,35 @@ class MailNotificationPresenter
 
             $local = $date->timezone($tz);
 
-            return $local->format('j M Y, g:i A').' ('.$local->format('T').')';
+            return $local->format('j M Y, H:i T');
         } catch (\Throwable) {
             return '';
         }
+    }
+
+    public static function displayUrl(?string $url): string
+    {
+        $safe = static::safeLiveUrl($url);
+        if (! is_string($safe) || $safe === '') {
+            return '';
+        }
+
+        return (string) preg_replace('~^https?://~i', '', $safe);
+    }
+
+    public static function bareHost(mixed $value): ?string
+    {
+        $text = trim((string) $value);
+        if ($text === '') {
+            return null;
+        }
+
+        $prefixed = preg_match('~^https?://~i', $text) === 1 ? $text : 'https://'.$text;
+        $host = parse_url($prefixed, PHP_URL_HOST);
+        $host = is_string($host) ? strtolower($host) : '';
+        $host = preg_replace('/^www\./', '', $host) ?: $host;
+
+        return $host !== '' ? $host : null;
     }
 
     public static function hasMailValue(mixed $value): bool
@@ -198,7 +223,7 @@ class MailNotificationPresenter
         $method = Invoice::paymentMethodLabel($order->payment_method);
 
         return static::filledMailRows([
-            ['label' => 'Order number', 'value' => $order->order_number ? '#'.$order->order_number : ''],
+            ['label' => 'Order', 'value' => $order->order_number ? '#'.$order->order_number : ''],
             ['label' => 'Order date', 'value' => static::formatDateTime($order->created_at)],
             ['label' => 'Payment date', 'value' => static::formatDateTime($order->paid_at ?: now())],
             ['label' => 'Payment method', 'value' => $method],
@@ -218,9 +243,13 @@ class MailNotificationPresenter
             if (! $item instanceof OrderItem) {
                 continue;
             }
+            $url = static::safeLiveUrl($item->site_url ?? $item->site?->site_url ?? null);
+            $domain = static::siteDomain($item) ?: static::siteName($item);
             $cards[] = [
-                'site_name' => static::siteName($item),
-                'site_url' => static::safeLiveUrl($item->site_url ?? $item->site?->site_url ?? null),
+                'site_name' => $domain,
+                'domain' => $domain,
+                'site_url' => $url,
+                'site_url_display' => $url ? static::displayUrl($url) : null,
                 'price' => static::euro(static::advertiserFacingItemPrice($item)),
                 'content_link' => static::safeLiveUrl($item->content_link ?? null),
             ];
@@ -301,16 +330,8 @@ class MailNotificationPresenter
         ];
 
         foreach ($candidates as $candidate) {
-            $value = trim((string) $candidate);
-            if ($value === '') {
-                continue;
-            }
-
-            $prefixed = preg_match('~^https?://~i', $value) === 1 ? $value : 'https://'.$value;
-            $host = parse_url($prefixed, PHP_URL_HOST);
-            $host = is_string($host) ? strtolower($host) : '';
-            $host = preg_replace('/^www\./', '', $host) ?: $host;
-            if ($host !== '') {
+            $host = static::bareHost($candidate);
+            if ($host) {
                 return $host;
             }
         }
@@ -320,13 +341,49 @@ class MailNotificationPresenter
 
     public static function siteLabel(?OrderItem $item): string
     {
-        $name = static::siteName($item);
         $domain = static::siteDomain($item);
-        if ($domain && ! str_contains(strtolower($name), $domain)) {
-            return $name.' ('.$domain.')';
+        if ($domain) {
+            return $domain;
         }
 
-        return $name;
+        return static::siteName($item);
+    }
+
+    /**
+     * Domain for titles/subjects, or "{n} sites" when an order has several placements.
+     */
+    public static function orderSiteHeadline(?Order $order = null, ?OrderItem $item = null, mixed $site = null): string
+    {
+        if ($item instanceof OrderItem) {
+            $domain = static::siteDomain($item);
+            if ($domain) {
+                return $domain;
+            }
+        }
+
+        if (is_object($site)) {
+            $host = static::bareHost($site->domain ?? $site->site_url ?? null);
+            if ($host) {
+                return $host;
+            }
+        }
+
+        if ($order instanceof Order) {
+            $order->loadMissing('items.site');
+            $count = $order->items->count();
+            if ($count > 1) {
+                return $count.' sites';
+            }
+            $first = $order->items->first();
+            if ($first instanceof OrderItem) {
+                $domain = static::siteDomain($first);
+                if ($domain) {
+                    return $domain;
+                }
+            }
+        }
+
+        return 'your site';
     }
 
     public static function liveUrlRelevant(?string $orderStatus, string $context): bool
@@ -401,14 +458,17 @@ class MailNotificationPresenter
     ): array {
         $placements = static::placements($order, $context, $statusOverride);
         $websiteValue = '—';
-        if (count($placements) === 1) {
+        $domains = collect($placements)->pluck('domain')->filter()->unique()->values();
+        if ($domains->count() === 1) {
+            $websiteValue = (string) $domains->first();
+        } elseif ($domains->count() > 1) {
+            $websiteValue = $domains->implode(', ');
+        } elseif (count($placements) === 1) {
             $websiteValue = $placements[0]['site_label'];
-        } elseif (count($placements) > 1) {
-            $websiteValue = collect($placements)->pluck('site_label')->filter()->implode(', ');
         }
 
         $rows = static::filledMailRows([
-            ['label' => 'Order number', 'value' => $order->order_number ? '#'.$order->order_number : ''],
+            ['label' => 'Order', 'value' => $order->order_number ? '#'.$order->order_number : ''],
             ['label' => 'Website', 'value' => $websiteValue],
         ]);
 
@@ -541,6 +601,31 @@ class MailNotificationPresenter
         }
 
         return false;
+    }
+
+    /**
+     * Show the green pill when a stored check verified dofollow, or the listing
+     * is sold as dofollow. Never invent the pill for nofollow / sponsored.
+     */
+    public static function listingIsDofollow(?OrderItem $item): bool
+    {
+        if (! $item) {
+            return false;
+        }
+
+        foreach ([$item->getAttribute('link_type'), $item->site?->link_type ?? null] as $candidate) {
+            $type = strtolower(trim((string) $candidate));
+            if ($type === 'dofollow' || str_starts_with($type, 'dofollow')) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    public static function showDofollowPill(?OrderItem $item): bool
+    {
+        return static::dofollowVerified($item) || static::listingIsDofollow($item);
     }
 
     /**

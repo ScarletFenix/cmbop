@@ -43,7 +43,12 @@ class AdvertiserReviewNudge extends PlatformMailable
             'ctaUrl' => $ordersUrl,
         ], true);
 
-        return $this->subject('Your link is live — take a look at order #'.$this->order->order_number)
+        return $this->subject($this->siteNamedSubject(
+            'Your article is live on {site} – please review',
+            $this->order,
+            $this->orderItem,
+            $this->site,
+        ))
             ->markdown('emails.advertiser.review-nudge', [
                 'firstName' => $this->firstName($this->advertiser),
                 'order' => $this->order,

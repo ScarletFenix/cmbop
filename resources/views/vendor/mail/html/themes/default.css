@@ -231,8 +231,8 @@ img {
 .table th:first-child,
 .table td:first-child {
     width: 38%;
-    color: #1a585e;
-    font-weight: 600;
+    color: #64748b;
+    font-weight: 400;
     padding-right: 12px;
     white-space: nowrap;
 }
@@ -240,6 +240,9 @@ img {
 .table td:last-child {
     word-break: break-word;
     overflow-wrap: anywhere;
+    text-align: right;
+    font-weight: 700;
+    color: #123f42;
 }
 
 .mail-url {

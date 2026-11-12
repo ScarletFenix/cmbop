@@ -9,6 +9,7 @@ use App\Models\EmailNotificationPreference;
 use App\Models\EmailNotificationSetting;
 use App\Models\Invoice;
 use App\Models\Order;
+use App\Models\OrderItem;
 use App\Models\User;
 use App\Services\Billing\InvoicePdfGenerator;
 use App\Services\Wallet\WelcomeBonusService;
@@ -508,6 +509,17 @@ abstract class PlatformMailable extends Mailable implements ShouldQueue
         $parts = preg_split('/\s+/', $name) ?: ['there'];
 
         return $parts[0] ?: 'there';
+    }
+
+    protected function siteNamedSubject(string $template, mixed $order = null, mixed $item = null, mixed $site = null): string
+    {
+        $label = MailNotificationPresenter::orderSiteHeadline(
+            $order instanceof Order ? $order : null,
+            $item instanceof OrderItem ? $item : null,
+            is_object($site) ? $site : null,
+        );
+
+        return str_replace('{site}', $label, $template);
     }
 
     /**

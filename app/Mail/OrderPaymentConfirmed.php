@@ -38,7 +38,7 @@ class OrderPaymentConfirmed extends PlatformMailable
 
     public function build()
     {
-        $subject = 'Payment Confirmed for Order #'.$this->order->order_number;
+        $subject = $this->siteNamedSubject('Order placed for {site}', $this->order);
 
         return $this->subject($subject)
             ->markdown('emails.order-payment-confirmed')

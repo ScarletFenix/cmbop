@@ -29,7 +29,8 @@ class PackProgressMail extends PlatformMailable
         $this->pack->loadMissing(['site', 'orders.items.site']);
         $size = max(1, (int) $this->pack->pack_size);
         $published = (int) $this->pack->published_count;
-        $siteName = $this->pack->site?->site_name ?? 'your site';
+        $siteName = MailNotificationPresenter::bareHost($this->pack->site?->domain ?? $this->pack->site?->site_url)
+            ?: ($this->pack->site?->site_name ?? 'your site');
 
         $placements = [];
         foreach ($this->pack->orders as $packOrder) {
@@ -47,8 +48,8 @@ class PackProgressMail extends PlatformMailable
         }
 
         $subject = $this->complete
-            ? $this->pack->label().' complete'
-            : $this->pack->label().' — '.$published.' of '.$size.' published';
+            ? $siteName.' pack complete'
+            : $siteName.' — '.$published.' of '.$size.' published';
 
         return $this->subject($subject)
             ->markdown('emails.advertiser.pack_progress')

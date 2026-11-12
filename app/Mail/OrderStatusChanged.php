@@ -52,12 +52,15 @@ class OrderStatusChanged extends PlatformMailable
             $this->changeKind === 'status' ? $this->newValue : (string) $order->status
         );
 
+        $siteLabel = MailNotificationPresenter::orderSiteHeadline($order);
         $subject = match (true) {
-            $advertiserCompleted => 'Order #'.$order->order_number.' is now complete',
-            $reviewReady => 'Ready for review — order #'.$order->order_number,
-            $this->changeKind === 'created' => 'New order #'.$order->order_number.' created',
-            $this->changeKind === 'payment_status' => 'Payment update for order #'.$order->order_number.' — '.$newLabel,
-            default => 'Order #'.$order->order_number.' is now '.$newLabel,
+            $advertiserCompleted => 'Article approved on '.$siteLabel,
+            $reviewReady => 'Your article is live on '.$siteLabel.' – please review',
+            $this->changeKind === 'created' => 'Order placed for '.$siteLabel,
+            $this->changeKind === 'payment_status' => 'Payment update for '.$siteLabel.' — '.$newLabel,
+            in_array($this->newValue, ['processing', 'in_progress'], true) => $siteLabel.' accepted your order',
+            in_array($this->newValue, ['cancelled', 'canceled', 'rejected'], true) => $siteLabel.' did not accept your order',
+            default => 'Order update for '.$siteLabel.' — '.$newLabel,
         };
 
         [$ctaUrl, $ctaLabel] = $this->ctaForAudience();

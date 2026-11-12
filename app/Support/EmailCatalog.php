@@ -844,6 +844,7 @@ class EmailCatalog
             'withdrawal request received' => 'withdrawal_requested_confirmation',
             'withdrawal request ' => 'withdrawal_status',
             'new order for your site' => 'publisher_new_order',
+            'new order for ' => 'publisher_new_order',
             'new order ' => 'partner_new_order',
             'correction requested for order' => 'partner_correction',
             'new message on order' => 'partner_thread_message',
@@ -853,9 +854,14 @@ class EmailCatalog
             'reset your seolinkbuildings partner password' => 'partner_password_reset',
             'manual payment required' => 'admin_manual_payment',
             'order accepted -' => 'order_accepted',
+            'accepted your order' => 'order_accepted',
             'order rejected -' => 'order_rejected',
+            'did not accept your order' => 'order_rejected',
             'order approved by advertiser' => 'order_completed',
+            'article approved on' => 'order_completed',
             'live url submitted' => 'live_url_submitted',
+            'your article is live on' => 'live_url_submitted',
+            'order placed for' => 'order_payment_confirmed',
             'pack of' => 'pack_progress',
             'ready for review' => 'order_status_changed',
             'restore the live link' => 'link_guarantee_restore',
@@ -863,8 +869,12 @@ class EmailCatalog
             'article ready to publish' => 'article_approved_for_publish',
             'revision requested — order' => 'article_revision_requested',
             'writing deadline soon' => 'writing_deadline_reminder',
+            'due soon: publish on' => 'publisher_publish_nudge',
+            'overdue: publish on' => 'publisher_publish_nudge',
+            'a paid order is waiting on' => 'publisher_accept_nudge',
             'new sites match' => 'saved_search_alert',
             'modification requested for order' => 'modification_requested',
+            'correction requested on' => 'modification_requested',
             'publisher requested a revised article' => 'content_revision_requested',
             'revised article ready' => 'content_revision_fulfilled',
             'your article was approved' => 'content_evaluation_result',
@@ -921,6 +931,7 @@ class EmailCatalog
             'needs publishing' => 'publisher_publish_nudge',
             'your link is live' => 'advertiser_review_nudge',
             '1 day left to review order' => 'auto_approve_reminder',
+            '1 day left to review ' => 'auto_approve_reminder',
             'we are chasing your order' => 'advertiser_order_stalled',
             '[admin] order' => 'admin_stalled_order',
             'new advertiser registered' => 'admin_new_user',
@@ -931,6 +942,7 @@ class EmailCatalog
             'new sites just added' => 'new_sites_digest',
             'new sites match your placements' => 'weekly_new_sites',
             'a new site matches your placements' => 'weekly_new_sites',
+            'new sites in your niches' => 'weekly_new_sites',
             'weekly activity summary' => 'weekly_activity_summary',
             'your spending summary' => 'monthly_spending_summary',
         ];
@@ -1012,7 +1024,7 @@ class EmailCatalog
             'dispute_refund_advertiser' => new DisputeRefundAdvertiser(self::sampleDispute(), $user, 115.0),
             'live_url_submitted' => new LiveUrlSubmitted(tap($order, function (Order $previewOrder) {
                 $previewOrder->status = 'review';
-            }), $item, $site, 'https://example.com/sample-live-url'),
+            }), $item, $site, 'https://example-news.de/sample-live-url'),
             'pack_progress' => new PackProgressMail(self::samplePack($order, $item, $site), $order, false),
             'link_guarantee_restore' => new LinkGuaranteeRestoreMail($user, $order, $item, now()->addDays(7)),
             'article_ready_for_approval' => new ArticleReadyForApprovalMail($user, $order, $item),
@@ -1221,14 +1233,14 @@ class EmailCatalog
     {
         $item = new OrderItem([
             'site_name' => 'Sample Publisher Site',
-            'site_url' => 'https://example.com',
+            'site_url' => 'https://example-news.de',
             'price' => 138.00,
             'additional_price' => 0,
             'homepage_days' => 7,
             'homepage_price' => 25.00,
             'social_channels' => ['facebook', 'x'],
-            'content_link' => 'https://example.com/content.docx',
-            'live_url' => 'https://example.com/sample-live-url',
+            'content_link' => 'https://example-news.de/content.docx',
+            'live_url' => 'https://example-news.de/sample-live-url',
             'anchor_text' => 'guest posting marketplace',
             'target_url' => 'https://advertiser.example/offer',
         ]);
@@ -1287,8 +1299,9 @@ class EmailCatalog
         $user = self::sampleUser();
         $site = new Site([
             'site_name' => 'Sample Site',
-            'site_url' => 'https://example.com',
-            'domain' => 'example.com',
+            'site_url' => 'https://example-news.de',
+            'domain' => 'example-news.de',
+            'link_type' => 'dofollow',
             'publisher_id' => $user->id,
             'verified' => true,
             'active' => true,
@@ -1576,7 +1589,7 @@ class EmailCatalog
 
     protected static function sampleWeeklyNewSitesMail(User $user, Site $site): WeeklyNewSitesDigestMail
     {
-        $site->domain = $site->domain ?: 'example.com';
+        $site->domain = $site->domain ?: 'example-news.de';
         $site->category = $site->category ?: 'Marketing';
         $site->country = $site->country ?: 'gb';
         $site->da = $site->da ?: 42;

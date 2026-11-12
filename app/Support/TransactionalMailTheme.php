@@ -56,14 +56,14 @@ class TransactionalMailTheme
      * @var array<string, array{label: string, bg: string, fg: string}>
      */
     public const PILLS = [
-        self::STATUS_PLACED => ['label' => 'Order placed', 'bg' => '#e6f5f5', 'fg' => '#1a585e'],
-        self::STATUS_ACCEPTED => ['label' => 'Accepted', 'bg' => '#e0f2fe', 'fg' => '#0369a1'],
-        self::STATUS_ARTICLE_LIVE => ['label' => 'Article live', 'bg' => '#d4f1f0', 'fg' => '#0b6266'],
-        self::STATUS_ACTION_NEEDED => ['label' => 'Action needed', 'bg' => '#fef3c7', 'fg' => '#b45309'],
-        self::STATUS_REJECTED => ['label' => 'Rejected', 'bg' => '#fee2e2', 'fg' => '#b91c1c'],
-        self::STATUS_PAYMENT_RELEASED => ['label' => 'Payment released', 'bg' => '#dcfce7', 'fg' => '#15803d'],
-        self::STATUS_WALLET => ['label' => 'Wallet top-up', 'bg' => '#ede9fe', 'fg' => '#6d28d9'],
-        self::STATUS_NEW_SITES => ['label' => 'New sites', 'bg' => '#e6f5f5', 'fg' => '#123f42'],
+        self::STATUS_PLACED => ['label' => 'ORDER PLACED', 'bg' => '#e6f5f5', 'fg' => '#1a585e'],
+        self::STATUS_ACCEPTED => ['label' => 'ACCEPTED', 'bg' => '#e0f2fe', 'fg' => '#0369a1'],
+        self::STATUS_ARTICLE_LIVE => ['label' => 'ARTICLE LIVE', 'bg' => '#d4f1f0', 'fg' => '#0b6266'],
+        self::STATUS_ACTION_NEEDED => ['label' => 'ACTION NEEDED', 'bg' => '#fef3c7', 'fg' => '#b45309'],
+        self::STATUS_REJECTED => ['label' => 'REJECTED', 'bg' => '#fee2e2', 'fg' => '#b91c1c'],
+        self::STATUS_PAYMENT_RELEASED => ['label' => 'PAYMENT RELEASED', 'bg' => '#dcfce7', 'fg' => '#15803d'],
+        self::STATUS_WALLET => ['label' => 'WALLET TOP-UP', 'bg' => '#ede9fe', 'fg' => '#6d28d9'],
+        self::STATUS_NEW_SITES => ['label' => 'NEW SITES', 'bg' => '#e6f5f5', 'fg' => '#123f42'],
     ];
 
     public const PROGRESS_STEPS = ['Placed', 'Accepted', 'Published', 'Approved'];
@@ -101,13 +101,21 @@ class TransactionalMailTheme
 
     public string $subline = '';
 
-    public string $pillLabel = 'Order placed';
+    public string $pillLabel = 'ORDER PLACED';
 
     public string $pillBg = '#e6f5f5';
 
     public string $pillFg = '#1a585e';
 
     public bool $showSuccessIcon = false;
+
+    public bool $showHeroIcon = false;
+
+    public string $heroMark = '✓';
+
+    public string $heroIconBg = '#0b6266';
+
+    public string $heroIconFg = '#ffffff';
 
     public string $successIconUrl = '';
 
@@ -150,7 +158,13 @@ class TransactionalMailTheme
         $theme->pillLabel = $mapped ? $pill['label'] : '';
         $theme->pillBg = $pill['bg'];
         $theme->pillFg = $pill['fg'];
-        $theme->showSuccessIcon = $mapped && in_array($theme->status, self::SUCCESS_STATUSES, true);
+        $theme->showHeroIcon = $mapped && $theme->status !== self::STATUS_NEW_SITES;
+        [$theme->heroMark, $theme->heroIconBg, $theme->heroIconFg] = match ($theme->status) {
+            self::STATUS_REJECTED => ['✕', '#b91c1c', '#ffffff'],
+            self::STATUS_ACTION_NEEDED => ['!', '#b45309', '#ffffff'],
+            default => ['✓', '#0b6266', '#ffffff'],
+        };
+        $theme->showSuccessIcon = $theme->showHeroIcon && $theme->heroMark === '✓';
         $theme->successIconUrl = self::successIconUrl();
         $theme->heading = $mapped ? self::resolveHeading($data, $theme->status) : trim((string) ($data['heading'] ?? ''));
         $theme->subline = $mapped ? self::resolveSubline($data, $theme->status) : '';
@@ -352,26 +366,46 @@ class TransactionalMailTheme
     /**
      * @param  array<string, mixed>  $data
      */
+    public static function siteHeadlineFromData(array $data): string
+    {
+        $order = $data['order'] ?? null;
+        $item = $data['orderItem'] ?? $data['item'] ?? null;
+        $site = $data['site'] ?? null;
+
+        return MailNotificationPresenter::orderSiteHeadline(
+            $order instanceof Order ? $order : null,
+            $item instanceof OrderItem ? $item : null,
+            is_object($site) ? $site : null,
+        );
+    }
+
     public static function resolveHeading(array $data, string $status): string
     {
-        $heading = trim((string) ($data['heading'] ?? ''));
-        if ($heading !== '') {
-            return $heading;
+        $site = self::siteHeadlineFromData($data);
+        $type = self::notificationType($data);
+
+        if (in_array($type, ['publisher_new_order', 'partner_new_order'], true)) {
+            return 'New order for '.$site;
         }
 
-        $order = $data['order'] ?? null;
-        $orderNumber = is_object($order) ? (string) ($order->order_number ?? '') : '';
-        $suffix = $orderNumber !== '' ? ' — #'.$orderNumber : '';
+        if (in_array($type, [
+            'modification_requested',
+            'partner_correction',
+            'article_revision_requested',
+            'content_revision_requested',
+        ], true)) {
+            return 'Correction requested on '.$site;
+        }
 
         return match ($status) {
-            self::STATUS_ARTICLE_LIVE => 'Your article is live'.$suffix,
-            self::STATUS_ACCEPTED => 'Order accepted'.$suffix,
-            self::STATUS_REJECTED => 'Order not accepted'.$suffix,
-            self::STATUS_PAYMENT_RELEASED => 'Order approved'.$suffix,
+            self::STATUS_ARTICLE_LIVE => 'Your article is live on '.$site,
+            self::STATUS_ACCEPTED => $site.' accepted your order',
+            self::STATUS_REJECTED => $site.' did not accept your order',
+            self::STATUS_PAYMENT_RELEASED => 'Article approved on '.$site,
             self::STATUS_WALLET => ! empty($data['isInstant']) ? 'Wallet topped up' : 'Deposit approved',
             self::STATUS_NEW_SITES => 'New sites in your niches',
-            self::STATUS_ACTION_NEEDED => 'This order needs you'.$suffix,
-            default => 'Order placed'.$suffix,
+            self::STATUS_ACTION_NEEDED => 'Action needed on '.$site,
+            default => 'Order placed for '.$site,
         };
     }
 
@@ -380,13 +414,8 @@ class TransactionalMailTheme
      */
     public static function resolveSubline(array $data, string $status): string
     {
-        $copy = trim((string) ($data['copy'] ?? $data['bodyCopy'] ?? ''));
-        if ($copy !== '' && strlen($copy) <= 160 && ! str_contains($copy, "\n")) {
-            return $copy;
-        }
-
         return match ($status) {
-            self::STATUS_ARTICLE_LIVE => 'Check the live post, then approve it or request corrections.',
+            self::STATUS_ARTICLE_LIVE => 'Please check it and approve, or ask for corrections.',
             self::STATUS_ACCEPTED => 'The publisher accepted this order and work can begin.',
             self::STATUS_REJECTED => 'This placement was not accepted. Browse other sites to continue.',
             self::STATUS_PAYMENT_RELEASED => 'The live article was approved and payout can be released.',
@@ -410,6 +439,7 @@ class TransactionalMailTheme
             return trim((string) ($data['heading'] ?? 'SEOLinkBuildings'));
         }
 
+        $site = self::siteHeadlineFromData($data);
         $deadline = self::reviewDeadlineLabel($data);
         if ($status === self::STATUS_ARTICLE_LIVE && $deadline !== null) {
             return 'Review it by '.$deadline.'. Your payment stays protected until you approve.';
@@ -417,13 +447,13 @@ class TransactionalMailTheme
 
         return match ($status) {
             self::STATUS_ARTICLE_LIVE => 'Review it by the deadline. Your payment stays protected until you approve.',
-            self::STATUS_ACCEPTED => 'The publisher accepted your order. Writing can begin.',
-            self::STATUS_REJECTED => 'This order was not accepted. Your funds stay in your wallet.',
-            self::STATUS_PAYMENT_RELEASED => 'The article was approved and payment can be released.',
+            self::STATUS_ACCEPTED => $site.' accepted your order. Writing can begin.',
+            self::STATUS_REJECTED => $site.' did not accept this order. Your funds stay in your wallet.',
+            self::STATUS_PAYMENT_RELEASED => 'Article approved on '.$site.'. Payment can be released.',
             self::STATUS_WALLET => 'Your wallet has been topped up and is ready to use.',
             self::STATUS_NEW_SITES => 'New catalog sites that match placements you have paid for.',
-            self::STATUS_ACTION_NEEDED => 'This order needs your attention before it can continue.',
-            default => 'Your order is in. We will email you when the publisher accepts.',
+            self::STATUS_ACTION_NEEDED => 'Action needed on '.$site.'. Open the order to continue.',
+            default => 'Order placed for '.$site.'. We will email you when the publisher accepts.',
         };
     }
 
@@ -493,13 +523,17 @@ class TransactionalMailTheme
      *
      * @return array{
      *     site_name: string,
+     *     site_domain: string,
      *     live_url: ?string,
+     *     live_url_display: string,
      *     order_number: string,
      *     review_by: ?string,
      *     review_by_iso: ?string,
      *     anchor_text: ?string,
      *     target_url: ?string,
+     *     target_url_display: string,
      *     dofollow_verified: bool,
+     *     show_dofollow_pill: bool,
      *     preview_url: ?string,
      *     approve_url: string,
      *     corrections_url: string,
@@ -557,16 +591,21 @@ class TransactionalMailTheme
         $target = MailNotificationPresenter::safeLiveUrl($item->briefTargetUrl());
         $anchor = $item->briefAnchorText();
         $extras = MailNotificationPresenter::articleLiveExtras($item);
+        $domain = MailNotificationPresenter::orderSiteHeadline($order, $item, $data['site'] ?? null);
 
         return [
-            'site_name' => MailNotificationPresenter::siteLabel($item),
+            'site_name' => $domain,
+            'site_domain' => $domain,
             'live_url' => $liveUrl,
+            'live_url_display' => $liveUrl ? MailNotificationPresenter::displayUrl($liveUrl) : '',
             'order_number' => (string) $order->order_number,
             'review_by' => $deadline ? MailNotificationPresenter::formatDateTime($deadline) : null,
             'review_by_iso' => $deadline?->toIso8601String(),
             'anchor_text' => $anchor,
             'target_url' => $target,
+            'target_url_display' => $target ? MailNotificationPresenter::displayUrl($target) : '',
             'dofollow_verified' => MailNotificationPresenter::dofollowVerified($item),
+            'show_dofollow_pill' => MailNotificationPresenter::showDofollowPill($item),
             'preview_url' => MailNotificationPresenter::articlePreviewUrl($item),
             'approve_url' => $approveUrl,
             'corrections_url' => $correctionsUrl,

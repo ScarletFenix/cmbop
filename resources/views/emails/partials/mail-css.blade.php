@@ -6,11 +6,11 @@ body, table, td, th, p, a, span, div, h1, h2, h3, h4, li, strong, em, b {
 @media only screen and (max-width: 600px) {
   .inner-body, .footer, .mail-header-bar, .mail-footer-bar, .mail-shell { width: 100% !important; max-width: 100% !important; }
   .content-cell, .mail-pad { padding-left: 16px !important; padding-right: 16px !important; }
-  .button, .mail-btn, .mail-btn-outline { width: 100% !important; display: block !important; text-align: center !important; }
-  .mail-progress-step { display: block !important; width: 100% !important; padding: 6px 0 !important; }
-  .mail-progress-join { display: none !important; }
-  .mail-stack, .mail-stack td { display: block !important; width: 100% !important; }
   .table td:first-child, .table th:first-child, .mail-summary-label { white-space: normal !important; width: 34% !important; }
+}
+@media only screen and (max-width: 479px) {
+  .mail-btn-row .mail-btn-cell { display: block !important; width: 100% !important; padding: 0 0 8px 0 !important; }
+  .mail-btn-row .mail-btn, .mail-btn-row .mail-btn-outline { display: block !important; width: 100% !important; text-align: center !important; box-sizing: border-box !important; }
 }
 @media (prefers-color-scheme: dark) {
   body, .wrapper, .mail-wrapper { background-color: #0b1f21 !important; color: #d4f1f0 !important; }
@@ -32,8 +32,11 @@ body, table, td, th, p, a, span, div, h1, h2, h3, h4, li, strong, em, b {
     background-color: transparent !important;
     color: #d4f1f0 !important;
   }
-  .mail-summary-label { color: #9ec9cb !important; }
+  .mail-summary-label { color: #9ec9cb !important; font-weight: 400 !important; }
   .mail-summary-value { color: #d4f1f0 !important; }
+  .mail-deadline, .mail-details td.mail-deadline, .mail-details .mail-deadline {
+    color: #fbbf24 !important;
+  }
   a, .mail-url { color: #3faeb2 !important; }
   .mail-btn, a.mail-btn, a.button, a.button-primary, a.button-blue {
     background-color: #0b6266 !important;
@@ -43,18 +46,24 @@ body, table, td, th, p, a, span, div, h1, h2, h3, h4, li, strong, em, b {
     font-weight: 700 !important;
   }
   .mail-btn-outline, a.mail-btn-outline, a.button-outline {
-    background-color: transparent !important;
+    background-color: #123f42 !important;
     color: #ffffff !important;
     border-color: #3faeb2 !important;
   }
   .mail-tick { background-color: #3faeb2 !important; color: #ffffff !important; }
   .mail-progress-future { background-color: #4b5563 !important; color: #e5e7eb !important; }
-  .mail-progress-current { background-color: #0b6266 !important; color: #ffffff !important; }
+  .mail-progress-current {
+    background-color: #123f42 !important;
+    border-color: #3faeb2 !important;
+    color: #d4f1f0 !important;
+  }
   .mail-progress-done { background-color: #3faeb2 !important; color: #ffffff !important; }
   .mail-progress-label-future { color: #94a3b8 !important; }
   .mail-progress-label-current { color: #d4f1f0 !important; }
   .mail-progress-label-done { color: #9ec9cb !important; }
-  .mail-progress-join-muted { background-color: #4b5563 !important; }
+  .mail-progress-line-on { border-color: #3faeb2 !important; }
+  .mail-progress-line-off { border-color: #64748b !important; }
+  .mail-progress-line-edge { border-color: #123f42 !important; }
   .mail-pill { background-color: #0b2a2d !important; color: #d4f1f0 !important; }
 }
 [data-ogsc] .mail-logo-pill, [data-ogsb] .mail-logo-pill { background-color: #ffffff !important; }
@@ -80,16 +89,29 @@ body, table, td, th, p, a, span, div, h1, h2, h3, h4, li, strong, em, b {
   background-color: #0b6266 !important;
   color: #ffffff !important;
 }
+[data-ogsc] .mail-btn-outline, [data-ogsb] .mail-btn-outline {
+  background-color: #123f42 !important;
+  color: #ffffff !important;
+  border-color: #3faeb2 !important;
+}
 [data-ogsc] .mail-progress-future, [data-ogsb] .mail-progress-future {
   background-color: #4b5563 !important;
   color: #e5e7eb !important;
 }
 [data-ogsc] .mail-progress-current, [data-ogsb] .mail-progress-current {
-  background-color: #0b6266 !important;
-  color: #ffffff !important;
+  background-color: #123f42 !important;
+  border-color: #3faeb2 !important;
+  color: #d4f1f0 !important;
 }
 [data-ogsc] .mail-progress-done, [data-ogsb] .mail-progress-done {
   background-color: #3faeb2 !important;
   color: #ffffff !important;
 }
+[data-ogsc] .mail-deadline, [data-ogsb] .mail-deadline,
+[data-ogsc] .mail-details td.mail-deadline, [data-ogsb] .mail-details td.mail-deadline {
+  color: #fbbf24 !important;
+}
+[data-ogsc] .mail-progress-line-edge, [data-ogsb] .mail-progress-line-edge { border-color: #123f42 !important; }
+[data-ogsc] .mail-progress-line-on, [data-ogsb] .mail-progress-line-on { border-color: #3faeb2 !important; }
+[data-ogsc] .mail-progress-line-off, [data-ogsb] .mail-progress-line-off { border-color: #64748b !important; }
 </style>

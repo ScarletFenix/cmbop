@@ -36,7 +36,12 @@ class OrderApprovedByAdvertiser extends PlatformMailable
             $this->orderItem = $this->orderItem->fresh() ?? $this->orderItem;
         }
 
-        return $this->subject('Order Approved by Advertiser - #'.$this->order->order_number)
+        return $this->subject($this->siteNamedSubject(
+            'Article approved on {site}',
+            $this->order,
+            $this->orderItem,
+            $this->site,
+        ))
             ->markdown('emails.advertiser.order_approved_publisher');
     }
 }
