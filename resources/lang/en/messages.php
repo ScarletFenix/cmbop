@@ -944,6 +944,12 @@ return [
     'usd_bank_pay_paypal' => 'PayPal',
 
     // Advertiser catalog row copy
+    'catalog_tab_guest_posts' => 'Guest posts',
+    'catalog_tab_link_insertions' => 'Link insertions',
+    'catalog_tab_banners' => 'Banners / Text links',
+    'catalog_tab_coming_soon' => 'Coming soon',
+    'catalog_tab_aria' => 'Catalog products',
+    'catalog_empty_link_insertions' => 'No sites accept link insertions with these filters yet',
     'catalog_price_from' => 'from',
     'catalog_percent_off' => ':percent off',
     'catalog_bulk_when_buying' => '−:percent when buying :qty+',

@@ -3,6 +3,7 @@
 namespace App\Services\Catalog;
 
 use App\Models\Category;
+use App\Support\LinkInsertionProduct;
 use App\Support\SiteTag;
 use Illuminate\Http\Request;
 
@@ -47,6 +48,7 @@ class CatalogUrlQuery
         'turnaround_max',
         'sensitive_topics',
         'google_news',
+        'product',
         'site',
         'sort',
         'per_page',
@@ -168,6 +170,11 @@ class CatalogUrlQuery
 
         if (($params['page'] ?? null) === '1') {
             unset($params['page']);
+        }
+
+        if (array_key_exists('product', $params)) {
+            $product = LinkInsertionProduct::catalogTab($params['product']);
+            $params['product'] = $product;
         }
 
         $tag = SiteTag::catalogFilterFromInput($params['tag'] ?? null, $params['sponsored'] ?? null);

@@ -66,6 +66,12 @@ return array_replace(require __DIR__.'/../en/messages.php', [
     'meta_blog_description' => 'Praktiske guides om gæsteindlæg, ankertekst, AEO/SEO og publisher-outreach fra SEOLinkBuildings.',
 
     // Advertiser catalog row copy
+    'catalog_tab_guest_posts' => 'Gæsteindlæg',
+    'catalog_tab_link_insertions' => 'Linkindsættelser',
+    'catalog_tab_banners' => 'Bannere / Tekstlinks',
+    'catalog_tab_coming_soon' => 'Kommer snart',
+    'catalog_tab_aria' => 'Katalogprodukter',
+    'catalog_empty_link_insertions' => 'Ingen sites accepterer endnu linkindsættelser med disse filtre',
     'catalog_price_from' => 'fra',
     'catalog_percent_off' => ':percent rabat',
     'catalog_bulk_when_buying' => '−:percent ved køb af :qty+',

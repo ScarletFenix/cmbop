@@ -912,6 +912,12 @@ return [
     'usd_bank_pay_paypal' => 'PayPal',
 
     // Advertiser catalog row copy
+    'catalog_tab_guest_posts' => 'Gastartikelen',
+    'catalog_tab_link_insertions' => 'Linkplaatsingen',
+    'catalog_tab_banners' => 'Banners / Tekstlinks',
+    'catalog_tab_coming_soon' => 'Binnenkort',
+    'catalog_tab_aria' => 'Catalogusproducten',
+    'catalog_empty_link_insertions' => 'Nog geen sites accepteren linkplaatsingen met deze filters',
     'catalog_price_from' => 'vanaf',
     'catalog_percent_off' => ':percent korting',
     'catalog_bulk_when_buying' => '−:percent bij aankoop van :qty+',

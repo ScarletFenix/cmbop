@@ -2557,7 +2557,7 @@ const CatalogUrl = (function () {
             'traffic_min', 'traffic_max', 'tag', 'sponsored', 'favorites_filter',
             'blacklist_filter', 'bulk_deals', 'new_badge', 'on_sale', 'featured', 'verified', 'quality',
             'rating_min', 'has_completions', 'publication_time', 'link_type', 'turnaround_max',
-            'sensitive_topics', 'google_news', 'site', 'sort', 'per_page', 'page',
+            'sensitive_topics', 'google_news', 'product', 'site', 'sort', 'per_page', 'page',
             'wizard',
         ];
     const DEFAULT_SORT = cfg.defaultSort || 'dr_desc';
@@ -2585,6 +2585,9 @@ const CatalogUrl = (function () {
                 if (!ALLOWED_PER_PAGE[value] || value === DEFAULT_PER_PAGE) return;
             }
             if (key === 'page' && value === '1') return;
+            if (key === 'product') {
+                value = value === 'link_insertion' ? 'link_insertion' : 'guest_post';
+            }
             out.set(key, value);
         });
         var tag = (out.get('tag') || '').toLowerCase().replace(/[_-]+/g, ' ').trim();
@@ -2764,6 +2767,7 @@ const CatalogUrl = (function () {
         setInputValue(form.querySelector('[name="turnaround_max"]'), get('turnaround_max'));
         setInputValue(form.querySelector('[name="sensitive_topics"]'), get('sensitive_topics'));
         setInputValue(form.querySelector('[name="google_news"]'), get('google_news'));
+        setInputValue(form.querySelector('[name="product"]'), get('product') || 'guest_post');
 
         const sortEl = document.getElementById('catalogSort');
         if (sortEl) sortEl.value = get('sort') || DEFAULT_SORT;
@@ -3318,6 +3322,7 @@ const CatalogLive = (function () {
         syncFilterChips(params);
         syncMoreFiltersBadge(params);
         syncTagQuick(params);
+        syncProductTabs(params);
         syncFavoritesQuick(params);
         syncFeaturedQuick(params);
         syncSuggestButtons(params);
@@ -3792,6 +3797,22 @@ function bindCatalogThemeSelects() {
     refreshCatalogThemeSelects();
 }
 
+function syncProductTabs(params) {
+    const current = params && params.get
+        ? (params.get('product') || 'guest_post')
+        : ((document.getElementById('catalogProductInput') || {}).value || 'guest_post');
+    const want = current === 'link_insertion' ? 'link_insertion' : 'guest_post';
+    document.querySelectorAll('.catalog-product-tabs [data-catalog-product]').forEach(function (tab) {
+        const on = (tab.getAttribute('data-catalog-product') || '') === want;
+        tab.classList.toggle('is-active', on);
+        tab.setAttribute('aria-selected', on ? 'true' : 'false');
+        if (on) tab.setAttribute('aria-current', 'page');
+        else tab.removeAttribute('aria-current');
+    });
+    const input = document.getElementById('catalogProductInput');
+    if (input) input.value = want;
+}
+
 function syncTagQuick(params) {
     const current = params && params.get
         ? (params.get('tag') || '')
@@ -4068,9 +4089,32 @@ document.addEventListener('click', function (e) {
         // Preserve wizard chrome when clearing filters inside the guided flow.
         const wizard = CatalogUrl.fromLocation().get('wizard');
         if (wizard) empty.set('wizard', wizard);
+        const product = CatalogUrl.fromLocation().get('product');
+        if (product) empty.set('product', product);
         CatalogUrl.applyToForm(empty);
         CatalogLive.apply({ params: empty, history: 'push', keepPage: true });
     }
+}, true);
+
+document.addEventListener('click', function (e) {
+    const clickEl = e.target && e.target.nodeType === Node.TEXT_NODE
+        ? e.target.parentElement
+        : e.target;
+    if (!clickEl || typeof clickEl.closest !== 'function') return;
+    const productTab = clickEl.closest('.catalog-page .catalog-product-tabs a[data-catalog-product]');
+    if (!productTab || !productTab.getAttribute('href')) return;
+    e.preventDefault();
+    e.stopPropagation();
+    if (typeof e.stopImmediatePropagation === 'function') e.stopImmediatePropagation();
+    if (catalogFilterLiveTimer) {
+        clearTimeout(catalogFilterLiveTimer);
+        catalogFilterLiveTimer = null;
+    }
+    const url = new URL(productTab.href, window.location.origin);
+    const params = CatalogUrl.canonicalize(url.searchParams);
+    CatalogUrl.applyToForm(params);
+    syncProductTabs(params);
+    CatalogLive.apply({ params: params, history: 'push', keepPage: true });
 }, true);
 
 /**

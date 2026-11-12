@@ -66,6 +66,12 @@ return array_replace(require __DIR__.'/../en/messages.php', [
     'meta_blog_description' => 'Практически ръководства за гост публикации, анкери, AEO/SEO и outreach от екипа на SEOLinkBuildings.',
 
     // Advertiser catalog row copy
+    'catalog_tab_guest_posts' => 'Гост публикации',
+    'catalog_tab_link_insertions' => 'Вмъкване на линкове',
+    'catalog_tab_banners' => 'Банери / Текстови линкове',
+    'catalog_tab_coming_soon' => 'Скоро',
+    'catalog_tab_aria' => 'Продукти в каталога',
+    'catalog_empty_link_insertions' => 'Все още няма сайтове, които приемат вмъкване на линкове с тези филтри',
     'catalog_price_from' => 'от',
     'catalog_percent_off' => ':percent отстъпка',
     'catalog_bulk_when_buying' => '−:percent при покупка на :qty+',

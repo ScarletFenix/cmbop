@@ -48,7 +48,6 @@
         || request()->filled('turnaround_max')
         || request()->input('sensitive_topics') == '1'
         || request()->input('google_news') == '1'
-        || request()->filled('product')
         || \App\Services\Catalog\CatalogUrlQuery::perPage(request())
             !== \App\Services\Catalog\CatalogUrlQuery::DEFAULT_PER_PAGE
     );
@@ -64,12 +63,17 @@
         $resultFirstItem ?: null,
         $resultLastItem ?: null
     );
+    $isLinkInsertionCatalog = $isLinkInsertionCatalog ?? \App\Support\LinkInsertionProduct::isCatalogLinkInsertionTab(request('product'));
     $catalogEmptyHeadline = $catalogEmptyHeadline ?? (
         $resultTotal < 1
             ? (
-                $hasActiveFilters
-                    ? ($catalogResultsStatus['text'] ?? 'No sites match your filters')
-                    : 'No publishers available yet'
+                $isLinkInsertionCatalog
+                    ? ($catalogResultsStatus['text'] ?? __('messages.catalog_empty_link_insertions'))
+                    : (
+                        $hasActiveFilters
+                            ? ($catalogResultsStatus['text'] ?? 'No sites match your filters')
+                            : 'No publishers available yet'
+                    )
             )
             : null
     );
@@ -446,6 +450,14 @@
                             } catch (\Throwable $e) {
                                 report($e);
                             }
+                            if ($isLinkInsertionCatalog && $offersLinkInsertion && $linkInsertionListPrice > 0) {
+                                $catalogListPrice = $linkInsertionListPrice;
+                                $catalogSalePrice = null;
+                                $catalogSalePct = 0;
+                                $catalogSalePctDisplay = null;
+                                $catalogDeals['has_paid_addons'] = false;
+                                $catalogDeals['bulk_note'] = null;
+                            }
                         @endphp
 
                         @if($isBlacklisted)
@@ -569,46 +581,7 @@
                             'featured' => $site->isFeatured(),
                         ])
 
-                        @if($isOwnedByMe)
-                            @include('advertiser.partials.catalog-own-listing', ['align' => 'center'])
-                        @else
-                        <button type="button" class="btn btn-sm btn-primary buy-now d-inline-flex justify-content-center align-items-center gap-2{{ $inCart ? ' is-in-cart' : '' }}"
-                                data-id="{{ $site->id }}"
-                                data-base-price="{{ $catalogListPrice }}"
-                                data-publisher-price="{{ $catalogPublisherPrice }}"
-                                data-discount-percent="{{ $catalogSalePct ?? 0 }}"
-                                data-name="{{ $displayName }}"
-                                data-product-type="guest_post"
-                                @if($inCart) data-in-cart="1" @endif
-                                aria-label="{{ $inCart ? 'In cart — open cart, '.$identityLabel.' is already in your cart' : 'Add to cart for '.$identityLabel }}">
-                            @if($inCart)
-                                <i class="fa-solid fa-cart-shopping" aria-hidden="true"></i>
-                                <span>In cart</span>
-                            @else
-                                <i class="fa-solid fa-cart-plus" aria-hidden="true"></i>
-                                <span>Add to cart</span>
-                            @endif
-                        </button>
-                        @if($offersLinkInsertion && $linkInsertionListPrice > 0)
-                            <div class="small text-muted mt-1">Link insertion {{ format_money($linkInsertionListPrice) }}</div>
-                            <button type="button" class="btn btn-sm btn-outline-primary buy-now d-inline-flex justify-content-center align-items-center gap-2 mt-1{{ $inLinkInsertionCart ? ' is-in-cart' : '' }}"
-                                    data-id="{{ $site->id }}"
-                                    data-base-price="{{ $linkInsertionListPrice }}"
-                                    data-name="{{ $displayName }}"
-                                    data-product-type="link_insertion"
-                                    @if($inLinkInsertionCart) data-in-cart="1" @endif
-                                    aria-label="{{ $inLinkInsertionCart ? 'Link insertion in cart' : 'Add link insertion for '.$identityLabel }}">
-                                @if($inLinkInsertionCart)
-                                    <i class="fa-solid fa-cart-shopping" aria-hidden="true"></i>
-                                    <span>Insertion in cart</span>
-                                @else
-                                    <i class="fa-solid fa-link" aria-hidden="true"></i>
-                                    <span>Add link insertion</span>
-                                @endif
-                            </button>
-                        @endif
-                        <div class="catalog-buy-addon-hint small text-muted mt-1" data-site-id="{{ $site->id }}" hidden></div>
-                        @endif
+                        @include('advertiser.partials.catalog-site-buy', ['align' => 'center'])
 
                         <div class="catalog-row-actions__secondary">
                             <div class="catalog-row-actions-quiet">
@@ -718,7 +691,9 @@
                             </p>
                             @include('advertiser.partials.catalog-site-trust', ['site' => $site, 'compactClass' => ''])
                             @include('advertiser.partials.catalog-publisher-reliability', ['site' => $site, 'variant' => 'details'])
+                            @unless($isLinkInsertionCatalog)
                             @include('advertiser.partials.catalog-writing-chip', ['site' => $site])
+                            @endunless
                         </div>
                     </div>
 
@@ -1010,6 +985,14 @@
                         </h5>
                         @if($catalogEmptyRecovery)
                             @include('advertiser.partials.catalog-empty-recovery', ['catalogEmptyRecovery' => $catalogEmptyRecovery])
+                        @elseif($isLinkInsertionCatalog)
+                            <p class="text-muted mb-3">
+                                Try another country, niche, or clear a metric filter. Guest posts stay on the Guest posts tab.
+                            </p>
+                            <div class="d-flex flex-wrap justify-content-center gap-2 mb-3">
+                                <a href="{{ route('advertiser.catalog', ['product' => \App\Support\LinkInsertionProduct::TYPE]) }}" class="btn btn-outline-secondary btn-sm">Clear other filters</a>
+                                <a href="{{ route('advertiser.catalog', ['product' => \App\Support\LinkInsertionProduct::GUEST_POST]) }}" class="btn btn-primary btn-sm">Browse guest posts</a>
+                            </div>
                         @elseif($hasActiveFilters)
                             <p class="text-muted mb-3">
                                 Try broader filters — clear a category, widen price, or remove DA/DR limits.
@@ -1189,6 +1172,14 @@
                             );
                         } catch (\Throwable $e) {
                             report($e);
+                        }
+                        if ($isLinkInsertionCatalog && $offersLinkInsertion && $linkInsertionListPrice > 0) {
+                            $catalogListPrice = $linkInsertionListPrice;
+                            $catalogSalePrice = null;
+                            $catalogSalePct = 0;
+                            $catalogSalePctDisplay = null;
+                            $catalogDeals['has_paid_addons'] = false;
+                            $catalogDeals['bulk_note'] = null;
                         }
                     @endphp
                     <span class="category-badge mt-1" title="{{ $mobileCategory }}">{{ $mobileCategory }}</span>
@@ -1397,46 +1388,7 @@
                 </div>
             @endif
             <div class="catalog-card-buy">
-                @if($isOwnedByMe)
-                    @include('advertiser.partials.catalog-own-listing', ['align' => 'start'])
-                @else
-                <button type="button" class="btn btn-sm btn-primary buy-now d-inline-flex justify-content-center align-items-center gap-2{{ $inCart ? ' is-in-cart' : '' }}"
-                        data-id="{{ $site->id }}"
-                        data-base-price="{{ $catalogListPrice }}"
-                        data-publisher-price="{{ $catalogPublisherPrice }}"
-                        data-discount-percent="{{ $catalogSalePct ?? 0 }}"
-                        data-name="{{ $displayName }}"
-                        data-product-type="guest_post"
-                        @if($inCart) data-in-cart="1" @endif
-                        aria-label="{{ $inCart ? 'In cart — open cart, '.$identityLabel.' is already in your cart' : 'Add to cart for '.$identityLabel }}">
-                    @if($inCart)
-                        <i class="fa-solid fa-cart-shopping" aria-hidden="true"></i>
-                        <span>In cart</span>
-                    @else
-                        <i class="fa-solid fa-cart-plus" aria-hidden="true"></i>
-                        <span>Add to cart</span>
-                    @endif
-                </button>
-                @if($offersLinkInsertion && $linkInsertionListPrice > 0)
-                    <div class="small text-muted mt-1">Link insertion {{ format_money($linkInsertionListPrice) }}</div>
-                    <button type="button" class="btn btn-sm btn-outline-primary buy-now d-inline-flex justify-content-center align-items-center gap-2 mt-1{{ $inLinkInsertionCart ? ' is-in-cart' : '' }}"
-                            data-id="{{ $site->id }}"
-                            data-base-price="{{ $linkInsertionListPrice }}"
-                            data-name="{{ $displayName }}"
-                            data-product-type="link_insertion"
-                            @if($inLinkInsertionCart) data-in-cart="1" @endif
-                            aria-label="{{ $inLinkInsertionCart ? 'Link insertion in cart' : 'Add link insertion for '.$identityLabel }}">
-                        @if($inLinkInsertionCart)
-                            <i class="fa-solid fa-cart-shopping" aria-hidden="true"></i>
-                            <span>Insertion in cart</span>
-                        @else
-                            <i class="fa-solid fa-link" aria-hidden="true"></i>
-                            <span>Add link insertion</span>
-                        @endif
-                    </button>
-                @endif
-                <div class="catalog-buy-addon-hint small text-muted" data-site-id="{{ $site->id }}" hidden></div>
-                @endif
+                @include('advertiser.partials.catalog-site-buy', ['align' => 'start'])
 
                 @include('advertiser.partials.catalog-price', [
                     'listPrice' => $catalogListPrice,
@@ -1697,6 +1649,14 @@
             <h5 class="mb-2">{{ $catalogEmptyHeadline ?? ($hasActiveFilters ? 'No sites match these filters' : 'No publishers available yet') }}</h5>
             @if($catalogEmptyRecovery)
                 @include('advertiser.partials.catalog-empty-recovery', ['catalogEmptyRecovery' => $catalogEmptyRecovery])
+            @elseif($isLinkInsertionCatalog)
+                <p class="text-muted mb-3">
+                    Try another country, niche, or clear a metric filter. Guest posts stay on the Guest posts tab.
+                </p>
+                <div class="d-flex flex-wrap justify-content-center gap-2">
+                    <a href="{{ route('advertiser.catalog', ['product' => \App\Support\LinkInsertionProduct::TYPE]) }}" class="btn btn-outline-secondary btn-sm">Clear other filters</a>
+                    <a href="{{ route('advertiser.catalog', ['product' => \App\Support\LinkInsertionProduct::GUEST_POST]) }}" class="btn btn-primary btn-sm">Browse guest posts</a>
+                </div>
             @elseif($hasActiveFilters)
                 <p class="text-muted mb-3">
                     Try broader filters — clear a category, widen price, or remove DA/DR limits.

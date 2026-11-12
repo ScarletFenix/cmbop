@@ -23,6 +23,12 @@ return array_replace(require __DIR__.'/../en/messages.php', [
     'meta_blog_description' => 'Πρακτικοί οδηγοί για guest posts, άγκυρες, AEO/SEO και outreach από την ομάδα SEOLinkBuildings.',
 
     // Advertiser catalog row copy
+    'catalog_tab_guest_posts' => 'Guest posts',
+    'catalog_tab_link_insertions' => 'Εισαγωγές συνδέσμων',
+    'catalog_tab_banners' => 'Banners / Συνδέσεις κειμένου',
+    'catalog_tab_coming_soon' => 'Σύντομα',
+    'catalog_tab_aria' => 'Προϊόντα καταλόγου',
+    'catalog_empty_link_insertions' => 'Κανένας ιστότοπος δεν δέχεται ακόμα εισαγωγές συνδέσμων με αυτά τα φίλτρα',
     'catalog_price_from' => 'από',
     'catalog_percent_off' => ':percent έκπτωση',
     'catalog_bulk_when_buying' => '−:percent για αγορά :qty+',

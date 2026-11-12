@@ -6,6 +6,7 @@ use App\Models\Category;
 use App\Models\Country;
 use App\Models\Language;
 use App\Models\Site;
+use App\Support\LinkInsertionProduct;
 use App\Support\SiteTag;
 use Illuminate\Http\Request;
 
@@ -22,7 +23,7 @@ class CatalogFilterStatus
         'blacklist_filter', 'new_badge', 'verified', 'bulk_deals', 'on_sale', 'featured',
         'quality', 'rating_min', 'has_completions', 'publication_time',
         'link_type', 'turnaround_max', 'sensitive_topics', 'google_news',
-        'site', 'sort', 'per_page', 'wizard',
+        'product', 'site', 'sort', 'per_page', 'wizard',
     ];
 
     public function __construct(
@@ -44,6 +45,11 @@ class CatalogFilterStatus
         $tagSuffix = $this->tagEmptySuffix($tagFilter);
 
         if ($total < 1) {
+            if (LinkInsertionProduct::isCatalogLinkInsertionTab($request->input('product'))) {
+                $text = __('messages.catalog_empty_link_insertions');
+
+                return ['text' => $text, 'announce' => $text];
+            }
             if ($search !== '' && $countries !== []) {
                 $text = 'No sites matching “'.$search.'” in '.$countryLabel.$tagSuffix;
 
