@@ -601,7 +601,7 @@ class AdminCatalogCopyStrikeTest extends TestCase
                 'days' => 30,
                 'copy' => 'all',
                 'q' => 'back-copy@',
-            ]), false);
+            ]));
     }
 
     public function test_lift_hide_clears_pace_exemption(): void
