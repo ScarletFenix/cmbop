@@ -16,21 +16,9 @@
             <img src="{{ brand_shell_wordmark_url() }}" alt="SEOLinkBuildings">
         </a>
         <p class="partner-lead">Partner dashboard · Teqno Ltd</p>
-        @if (session('success'))
-            <div class="partner-alert ok">{{ session('success') }}</div>
-        @endif
-        @if (session('error'))
-            <div class="partner-alert err">{{ session('error') }}</div>
-        @endif
+        @include('partials.session-flash')
         @if (session('main_site_url'))
             <p><a href="{{ session('main_site_url') }}">Open the main SEOLinkBuildings site</a></p>
-        @endif
-        @if ($errors->any())
-            <div class="partner-alert err">
-                @foreach ($errors->all() as $err)
-                    <div>{{ $err }}</div>
-                @endforeach
-            </div>
         @endif
         @yield('content')
     </div>

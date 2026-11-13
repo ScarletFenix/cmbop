@@ -4,7 +4,6 @@ namespace App\Services\Marketplace;
 
 use App\Models\FeatureOfferSetting;
 use App\Models\Site;
-use App\Models\WritingSetting;
 use App\Support\LinkInsertionProduct;
 use App\Support\PublicationDuration;
 use Illuminate\Http\Request;
@@ -350,6 +349,10 @@ class CheckoutAddOnService
             $line['article_choice'] = $this->resolvedArticleChoice($line, $source);
         }
 
+        $copy = $this->writingChoiceCopy();
+        $line['writing_turnaround_text'] = $copy['turnaround_text'];
+        $line['writing_explainer'] = $copy['explainer'];
+
         return $line;
     }
 
@@ -424,7 +427,7 @@ class CheckoutAddOnService
      */
     public function cartArticleCopy(): array
     {
-        $turnaround = WritingSetting::turnaroundText();
+        $turnaround = $this->writingTurnaroundText();
         $percent = rtrim(rtrim(number_format($this->guaranteePercent(), 2), '0'), '.');
 
         return [

@@ -45,21 +45,9 @@
     <div class="partner-scope-banner">You opened this order from an email link. Sign in for Money, Settings, and other orders.</div>
 @endif
 <main class="partner-main">
-    @if (session('success'))
-        <div class="partner-alert ok" role="status">{{ session('success') }}</div>
-    @endif
-    @if (session('error'))
-        <div class="partner-alert err" role="alert">{{ session('error') }}</div>
-    @endif
+    @include('partials.session-flash')
     @if (session('main_site_url'))
         <p><a href="{{ session('main_site_url') }}">Open the main SEOLinkBuildings site</a></p>
-    @endif
-    @if ($errors->any())
-        <div class="partner-alert err">
-            @foreach ($errors->all() as $err)
-                <div>{{ $err }}</div>
-            @endforeach
-        </div>
     @endif
     @yield('content')
 </main>

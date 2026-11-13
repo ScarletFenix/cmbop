@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Partner;
 use App\Models\PartnerWebhookEndpoint;
 use App\Services\Partners\PartnerWebhookService;
+use App\Support\UserFacingError;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -40,7 +41,7 @@ class PartnerWebhookController extends Controller
                 $data['description'] ?? null
             );
         } catch (\RuntimeException $e) {
-            return response()->json(['error' => $e->getMessage()], 422);
+            return response()->json(['error' => UserFacingError::message($e, 'Could not save that webhook endpoint.')], 422);
         }
 
         return response()->json([

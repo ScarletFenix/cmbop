@@ -45,7 +45,6 @@
 
 .nc-bell-btn:hover {
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
-  transform: translateY(-1px);
   color: var(--nc-primary-strong, #1a585e);
   background: #eef3f4;
 }
@@ -1047,7 +1046,6 @@ a.nc-item-action.nc-btn-primary,
 
 .nc-btn-primary:hover {
   box-shadow: 0 6px 14px rgba(26, 88, 94, 0.28);
-  transform: translateY(-1px);
   color: #fff !important;
 }
 
@@ -1060,7 +1058,6 @@ a.nc-item-action.nc-btn-primary,
 .nc-open-link:hover {
   background: var(--nc-primary-soft);
   box-shadow: 0 4px 10px rgba(26, 88, 94, 0.12);
-  transform: translateY(-1px);
 }
 
 .nc-btn-primary:active,
@@ -1078,7 +1075,7 @@ a.nc-item-action.nc-btn-primary,
 
 .nc-btn-primary:hover,
 .nc-open-link:hover {
-  transform: translateY(-1px);
+  box-shadow: 0 6px 14px rgba(26, 88, 94, 0.18);
 }
 
 .nc-btn-primary:active,

@@ -643,13 +643,12 @@ button.wallet-kpi { cursor: pointer; appearance: none; }
     border-radius: 10px;
     font-size: 0.82rem;
     max-width: 100%;
-    transition: border-color 140ms ease, box-shadow 140ms ease, transform 140ms ease;
+    transition: border-color 140ms ease, box-shadow 140ms ease;
 }
 .ov-file-chip:hover,
 .ov-file-chip:focus-within {
     border-color: var(--brand-primary-border, #b8e4e4);
     box-shadow: 0 4px 12px rgba(26, 88, 94, 0.08);
-    transform: translateY(-1px);
 }
 .ov-file-chip__icon {
     color: var(--brand-primary, #1a585e);
@@ -758,13 +757,13 @@ button.wallet-kpi { cursor: pointer; appearance: none; }
     line-height: 1;
     border-radius: 8px !important;
     white-space: nowrap;
-    transition: background-color 140ms ease, border-color 140ms ease, color 140ms ease, transform 140ms ease, box-shadow 140ms ease;
+    transition: background-color 140ms ease, border-color 140ms ease, color 140ms ease, box-shadow 140ms ease;
 }
 .ov-live-btn i {
     margin: 0 !important;
 }
 .ov-live-btn:hover {
-    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(26, 88, 94, 0.08);
 }
 .ov-live-btn:focus-visible {
     outline: 2px solid var(--brand-primary, #1a585e);
@@ -1225,10 +1224,10 @@ button.wallet-kpi { cursor: pointer; appearance: none; }
     display: none;
 }
 #orderDetailsFooter .btn {
-    transition: transform 140ms ease, box-shadow 140ms ease, background-color 140ms ease;
+    transition: box-shadow 140ms ease, background-color 140ms ease;
 }
 #orderDetailsFooter .btn:hover {
-    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(26, 88, 94, 0.08);
 }
 #orderDetailsFooter .btn:focus-visible {
     outline: 2px solid var(--brand-primary, #1a585e);
@@ -1801,10 +1800,10 @@ button.wallet-kpi { cursor: pointer; appearance: none; }
     color: #0f766e;
 }
 .ov-copy-btn {
-    transition: color 140ms ease, background-color 140ms ease, transform 140ms ease;
+    transition: color 140ms ease, background-color 140ms ease;
 }
 .ov-copy-btn:hover {
-    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(26, 88, 94, 0.08);
 }
 .ov-copy-btn:focus-visible {
     outline: 2px solid var(--brand-primary, #1a585e);

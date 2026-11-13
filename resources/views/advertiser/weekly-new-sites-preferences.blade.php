@@ -23,8 +23,8 @@
     <h1 class="h4 fw-semibold mb-2" style="color:#1a585e;">New-site digest</h1>
     <p class="text-muted">Weekly email of newly listed sites in the niche and country pairs you have paid for. You can turn the topic off or edit pairs.</p>
 
-    @if(session('success'))
-        <div class="alert alert-success">{{ session('success') }}</div>
+    @if($signed)
+        @include('partials.session-flash')
     @endif
 
     <form method="post" action="{{ $formAction }}">

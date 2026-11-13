@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api\V1;
 use App\Http\Controllers\Controller;
 use App\Models\AdvertiserWebhookEndpoint;
 use App\Services\Advertiser\AdvertiserWebhookService;
+use App\Support\UserFacingError;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -42,7 +43,7 @@ class AdvertiserWebhookController extends Controller
             return response()->json([
                 'status' => 'error',
                 'error' => 'validation_error',
-                'message' => $e->getMessage(),
+                'message' => UserFacingError::message($e, 'Could not save that webhook endpoint.'),
             ], 422);
         }
 

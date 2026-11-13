@@ -9,6 +9,7 @@ use App\Services\Partners\PartnerApiSerializer;
 use App\Services\Partners\PartnerSandbox;
 use App\Services\Partners\PartnerSandboxOrderService;
 use App\Services\Partners\PartnerSandboxUnavailableException;
+use App\Support\UserFacingError;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -46,9 +47,10 @@ class PartnerSandboxController extends Controller
         } catch (QueryException $e) {
             throw $e;
         } catch (\RuntimeException $e) {
-            $code = $e->getMessage() === 'site_not_found' ? 422 : 400;
+            $reason = $e->getMessage();
+            $code = $reason === 'site_not_found' ? 422 : 400;
 
-            return response()->json(['error' => $e->getMessage()], $code);
+            return response()->json(['error' => UserFacingError::message($e, 'The request could not be completed.')], $code);
         }
 
         return response()->json([

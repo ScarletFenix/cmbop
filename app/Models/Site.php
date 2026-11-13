@@ -2266,6 +2266,11 @@ class Site extends Model
     public function leftoverStringAttribute(string $attribute): ?string
     {
         try {
+            if (array_key_exists($attribute, $this->attributes)) {
+                $value = $this->attributes[$attribute];
+
+                return is_string($value) && trim($value) !== '' ? trim($value) : null;
+            }
             if (! static::hasSitesColumn($attribute)) {
                 return null;
             }
