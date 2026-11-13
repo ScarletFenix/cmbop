@@ -66,12 +66,12 @@ class CatalogRowDeals
         }
 
         $minQty = (int) config('site_promotions.bulk.min_qty', 3);
-        $tiersNote = CatalogSaleBadge::bulkTiersNote($salePercent, $tiers);
 
         return [
             'sale_percent' => $salePercent,
             'bulk_percent' => $bulkPercent,
-            'bulk_note' => $tiersNote ?? CatalogSaleBadge::bulkNote($salePercent, $bulkPercent, $minQty),
+            // Effective pack vs painted qty-1 — not nominal "3 for −15%" labels.
+            'bulk_note' => CatalogSaleBadge::bulkNote($salePercent, $bulkPercent, $minQty),
             'has_paid_addons' => CatalogSaleBadge::hasPaidAddons($sensitivePrices, $homepageOptions),
         ];
     }

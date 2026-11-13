@@ -12,13 +12,6 @@
         <a href="{{ route('advertiser.catalog') }}" class="btn btn-sm btn-outline-primary">Back to catalog</a>
     </div>
 
-    @if(session('success'))
-        <div class="alert alert-success">{{ session('success') }}</div>
-    @endif
-    @if(session('error'))
-        <div class="alert alert-danger">{{ session('error') }}</div>
-    @endif
-
     <div class="card border-0 shadow-sm">
         <div class="card-body p-0">
             @if($searches->isEmpty())
@@ -52,7 +45,7 @@
                                         <form method="POST" action="{{ route('advertiser.saved-searches.destroy', $search) }}" class="d-inline">
                                             @csrf
                                             @method('DELETE')
-                                            <button type="submit" class="btn btn-sm btn-outline-danger" onclick="return confirm('Delete this saved search?')">Delete</button>
+                                            <button type="submit" class="btn btn-sm btn-outline-danger" data-slb-confirm="Delete this saved search?" data-slb-confirm-title="Delete saved search?" data-slb-confirm-danger="1">Delete</button>
                                         </form>
                                     </td>
                                 </tr>

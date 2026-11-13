@@ -69,7 +69,7 @@ class HomepageFirstImpressionTest extends TestCase
     {
         $html = $this->get('/login')->assertOk()->getContent();
 
-        $this->assertStringNotContainsString('0+', $html);
+        $this->assertDoesNotMatchRegularExpression('/(^|[^0-9])0\+/', $html);
         $this->assertStringNotContainsString('0/5', $html);
         $this->assertStringNotContainsString('Links Delivered', $html);
         $this->assertStringNotContainsString('Clients Rating', $html);

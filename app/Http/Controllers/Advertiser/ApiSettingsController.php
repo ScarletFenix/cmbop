@@ -8,6 +8,7 @@ use App\Models\AdvertiserWebhookEndpoint;
 use App\Services\Advertiser\AdvertiserApiKeyService;
 use App\Services\Advertiser\AdvertiserWebhookService;
 use App\Services\Mcp\McpEndpoints;
+use App\Support\UserFacingError;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
@@ -106,7 +107,7 @@ class ApiSettingsController extends Controller
                 $data['description'] ?? null
             );
         } catch (\RuntimeException $e) {
-            return back()->withInput()->with('error', $e->getMessage());
+            return back()->withInput()->with('error', UserFacingError::message($e, 'Could not save that webhook endpoint.'));
         }
 
         $request->session()->flash('advertiser_webhook_secret', $created['secret']);

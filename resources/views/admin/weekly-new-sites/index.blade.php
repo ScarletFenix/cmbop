@@ -12,13 +12,6 @@
         <a href="{{ route('admin.emails.index') }}" class="btn btn-outline-secondary btn-sm">Email Center</a>
     </div>
 
-    @if(session('success'))
-        <div class="alert alert-success">{{ session('success') }}</div>
-    @endif
-    @if(session('error'))
-        <div class="alert alert-danger">{{ session('error') }}</div>
-    @endif
-
     @if(!$tablesReady)
         <div class="alert alert-warning">Tables are not installed. Run <code>php artisan migrate</code> or <code>database/sql/add_weekly_new_sites_digest.sql</code> in phpMyAdmin. Do not send live mail from this environment.</div>
     @endif

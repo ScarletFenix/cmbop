@@ -34,6 +34,7 @@ use App\Services\Partners\PartnerSandboxOrderService;
 use App\Services\Partners\PartnerSandboxUnavailableException;
 use App\Services\Partners\PartnerThreadService;
 use App\Services\Partners\PartnerWithdrawalService;
+use App\Support\UserFacingError;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Schema;
@@ -171,11 +172,11 @@ class PartnerApiController extends Controller
             try {
                 $result = $this->complete->complete($item, (string) $request->input('live_url'), $this->partner($request));
             } catch (PartnerInvalidTransitionException $e) {
-                return response()->json(['error' => 'invalid_state_transition', 'message' => $e->getMessage()], 409);
+                return response()->json(['error' => 'invalid_state_transition', 'message' => UserFacingError::message($e, 'This order cannot be completed in its current state.')], 409);
             } catch (PartnerLinkCheckFailedException $e) {
                 return response()->json([
                     'error' => 'link_check_failed',
-                    'message' => $e->getMessage(),
+                    'message' => UserFacingError::message($e, 'The live URL did not pass the link check.'),
                     'link_check' => $e->check,
                 ], 422);
             }
@@ -494,15 +495,16 @@ class PartnerApiController extends Controller
                 $withdrawal = app(PartnerWithdrawalService::class)
                     ->request($request->user(), $this->partner($request), $request);
             } catch (\RuntimeException $e) {
-                $code = $e->getMessage() === 'insufficient_available' ? 402 : 400;
+                $reason = $e->getMessage();
+                $code = $reason === 'insufficient_available' ? 402 : 400;
 
                 return response()->json([
                     'error' => [
                         'type' => $code === 402 ? 'payment_error' : 'invalid_request',
-                        'code' => $e->getMessage(),
-                        'message' => $e->getMessage() === 'insufficient_available'
+                        'code' => $reason,
+                        'message' => $reason === 'insufficient_available'
                             ? 'Not enough available balance.'
-                            : $e->getMessage(),
+                            : UserFacingError::message($e, 'The request could not be completed.'),
                     ],
                 ], $code);
             }

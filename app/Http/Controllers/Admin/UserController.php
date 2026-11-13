@@ -339,7 +339,7 @@ class UserController extends Controller
         ]);
 
         if (! User::hasUsersColumn('is_test')) {
-            return back()->with('error', 'Test accounts cannot be marked on this database. Run database/sql/add_users_is_test.sql.');
+            return back()->with('error', 'Test accounts cannot be marked on this database. Ask ops to apply the latest schema.');
         }
 
         $from = $user->isTestAccount();

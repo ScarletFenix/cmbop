@@ -126,7 +126,7 @@ class ContentLibraryPhases36Test extends TestCase
             ->get(route('advertiser.content-library'))
             ->assertOk()
             ->assertSee('Plenty Of Time Piece')
-            ->assertDontSee('within 7 days', false)
+            ->assertDontSee('library-expiry-hint--urgent', false)
             ->getContent();
 
         $this->assertStringContainsString('Expires in', $html);

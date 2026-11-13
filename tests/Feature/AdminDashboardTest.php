@@ -111,7 +111,7 @@ class AdminDashboardTest extends TestCase
             ->assertSee('loadFinanceStrip')
             ->assertSee('js-kpi-link')
             ->assertSee('js-kpi-users-caption')
-            ->assertSee('Active role: chosen at signup, or a site / order.')
+            ->assertSee('Usage counts: chosen active role, or a site / order.')
             ->assertSee('assigned roles', false)
             ->assertSee('Urgent')
             ->assertSee('Backlog')

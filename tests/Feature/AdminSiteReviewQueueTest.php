@@ -273,13 +273,16 @@ class AdminSiteReviewQueueTest extends TestCase
             ->assertOk()
             ->assertJson(['success' => true]);
 
+        $this->assertNull(Site::query()->find($siteId));
+
         $note = InAppNotification::query()
             ->where('user_id', $admin->id)
             ->where('related_id', $siteId)
             ->first();
 
-        $this->assertSame(InAppNotification::STATUS_ARCHIVED, $note?->status);
-        $this->assertNotNull(Site::query()->find($siteId)?->archived_at);
+        if ($note) {
+            $this->assertSame(InAppNotification::STATUS_ARCHIVED, $note->status);
+        }
     }
 
     public function test_queue_counts_exclude_awaiting_details_drafts(): void

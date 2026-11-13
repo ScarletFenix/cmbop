@@ -356,9 +356,9 @@
                                 @endif
                                 @if($blockTip)
                                     <span class="badge text-bg-warning text-dark mt-1"
-                                          title="{{ $blockTip['reason'] }} {{ $blockTip['clears'] }}"
-                                          data-bs-toggle="tooltip"
-                                          data-bs-title="{{ $blockTip['reason'] }} {{ $blockTip['clears'] }}">Blocks new bulk</span>
+                                          data-glass-tip
+                                          data-glass-tip-body="{{ $blockTip['reason'] }} {{ $blockTip['clears'] }}"
+                                          data-glass-tip-placement="top">Blocks new bulk</span>
                                 @endif
                                 @if($staffAssignedCount > 0)
                                     <div class="small text-muted mt-1">Staff added {{ $staffAssignedCount }} {{ \Illuminate\Support\Str::plural('site', $staffAssignedCount) }}</div>
@@ -532,11 +532,6 @@
         assignForm && assignForm.classList.add('d-none');
     });
 
-    if (window.bootstrap) {
-        document.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(function (el) {
-            try { new window.bootstrap.Tooltip(el); } catch (err) {}
-        });
-    }
 })();
 </script>
 @endsection

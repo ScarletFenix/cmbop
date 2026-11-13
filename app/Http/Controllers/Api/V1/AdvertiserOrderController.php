@@ -9,6 +9,7 @@ use App\Services\Advertiser\AdvertiserApiIdempotency;
 use App\Services\Advertiser\AdvertiserApiOrderService;
 use App\Services\Advertiser\AdvertiserApiSerializer;
 use App\Services\Advertiser\AdvertiserSandbox;
+use App\Support\UserFacingError;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use RuntimeException;
@@ -83,7 +84,7 @@ class AdvertiserOrderController extends Controller
                 return response()->json([
                     'status' => 'error',
                     'error' => 'insufficient_funds',
-                    'message' => $e->getMessage(),
+                    'message' => UserFacingError::message($e, 'Not enough wallet funds for this order.'),
                     'required' => $e->required,
                     'available' => $e->available,
                     'currency' => 'EUR',
@@ -121,7 +122,7 @@ class AdvertiserOrderController extends Controller
                 return response()->json([
                     'status' => 'error',
                     'error' => 'cannot_cancel',
-                    'message' => $e->getMessage(),
+                    'message' => UserFacingError::message($e, 'This order cannot be cancelled.'),
                 ], 422);
             } catch (RuntimeException $e) {
                 return $this->fromRuntime($e);
@@ -153,7 +154,7 @@ class AdvertiserOrderController extends Controller
             'anchor_and_target_required' => [422, 'validation_error', 'anchor and target_url are required.'],
             'target_url_https_required' => [422, 'validation_error', 'target_url must be an https URL.'],
             'wallet_unavailable' => [503, 'wallet_unavailable', 'The advertiser wallet is temporarily unavailable.'],
-            'sandbox_unavailable' => [503, 'sandbox_unavailable', 'Sandbox columns are missing. Apply database/sql/add_advertiser_ordering_api.sql.'],
+            'sandbox_unavailable' => [503, 'sandbox_unavailable', 'Sandbox ordering is temporarily unavailable.'],
             'order_not_found' => [404, 'not_found', 'Order not found.'],
         ];
         $code = $e->getMessage();
@@ -170,7 +171,7 @@ class AdvertiserOrderController extends Controller
         return response()->json([
             'status' => 'error',
             'error' => 'failed',
-            'message' => $e->getMessage(),
+            'message' => UserFacingError::message($e, 'The request could not be completed.'),
         ], 422);
     }
 }

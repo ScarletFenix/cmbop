@@ -12,6 +12,7 @@ use App\Services\Partners\PartnerApiKeyService;
 use App\Services\Partners\PartnerEmailActionService;
 use App\Services\Partners\PartnerEmailChangeService;
 use App\Services\Partners\PartnerWebhookService;
+use App\Support\UserFacingError;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -145,7 +146,7 @@ class SettingsController extends Controller
         try {
             $issued = $keys->issue($partner, $data['name'], PartnerApiKeyService::SCOPES, $data['mode'], $request->user());
         } catch (RuntimeException $e) {
-            return back()->with('error', $e->getMessage());
+            return back()->with('error', UserFacingError::message($e, 'Could not issue that API key.'));
         }
 
         return back()->with('success', 'API key created. Copy it now — it is shown only once.')
@@ -174,7 +175,7 @@ class SettingsController extends Controller
         try {
             $created = $webhooks->createEndpoint($partner, $data['url'], $data['events'] ?? ['*']);
         } catch (RuntimeException $e) {
-            return back()->with('error', $e->getMessage());
+            return back()->with('error', UserFacingError::message($e, 'Could not save that webhook endpoint.'));
         }
 
         return back()->with('success', 'Webhook endpoint saved. Copy the signing secret now.')

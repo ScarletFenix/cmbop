@@ -497,7 +497,11 @@ class PublisherSiteFileVerificationTest extends TestCase
 
     public function test_my_sites_table_shows_get_verified_for_unverified_sites(): void
     {
-        $this->makeSite(['verified' => false, 'active' => false]);
+        $this->makeSite([
+            'verified' => false,
+            'active' => false,
+            'onboarding_status' => Site::ONBOARDING_DETAILS_COMPLETE,
+        ]);
 
         $ajax = $this->actingAs($this->publisher)
             ->get(route('publisher.sites.ajax', ['status' => 'pending']));

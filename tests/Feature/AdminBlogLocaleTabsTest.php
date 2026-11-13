@@ -8,6 +8,7 @@ use App\Models\Role;
 use App\Models\User;
 use App\Support\PublicI18n;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Auth;
 use Tests\TestCase;
 
 class AdminBlogLocaleTabsTest extends TestCase
@@ -244,6 +245,9 @@ class AdminBlogLocaleTabsTest extends TestCase
             ->assertOk()
             ->assertSee('Secret draft body', false)
             ->assertSee('Staff preview only', false);
+
+        Auth::logout();
+        $this->flushSession();
 
         $this->get(route('admin.blogs.preview', $blog->id))
             ->assertRedirect(route('login'));

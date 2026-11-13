@@ -462,9 +462,21 @@ class MarketingDashboardQueuesTest extends TestCase
         $this->actingAs($this->marketer)
             ->from(route('marketing.bulk-site-requests.show', $waiting))
             ->post(route('marketing.bulk-site-requests.claim', $waiting))
+            ->assertForbidden();
+
+        $adminRole = Role::where('name', 'admin')->firstOrFail();
+        $admin = User::factory()->create([
+            'email_verified_at' => now(),
+            'active_role_id' => $adminRole->id,
+        ]);
+        $admin->roles()->attach($adminRole->id);
+
+        $this->actingAs($admin)
+            ->from(route('admin.bulk-site-requests.show', $waiting))
+            ->post(route('admin.bulk-site-requests.claim', $waiting))
             ->assertRedirect();
 
-        $this->assertSame($this->marketer->id, (int) $waiting->fresh()->handled_by);
+        $this->assertSame($admin->id, (int) $waiting->fresh()->handled_by);
 
         $this->actingAs($this->marketer)
             ->get(route('marketing.bulk-site-requests.index', ['status' => 'all']))

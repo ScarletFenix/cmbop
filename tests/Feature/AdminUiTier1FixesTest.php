@@ -60,7 +60,7 @@ class AdminUiTier1FixesTest extends TestCase
 
         $this->assertStringContainsString('function escapeHtml(', $html);
         $this->assertStringContainsString('escapeHtml(order.order_number)', $html);
-        $this->assertStringContainsString('escapeHtml(order.reference_code)', $html);
+        $this->assertStringContainsString('escapeHtml(order.reference_code || \'\')', $html);
         // Raw concatenation of user-controlled fields must be gone.
         $this->assertStringNotContainsString("'<strong>' + order.order_number", $html);
         $this->assertStringNotContainsString("+ (order.user ? order.user.name : 'N/A') +", $html);

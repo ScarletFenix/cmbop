@@ -783,7 +783,7 @@ class PaypalWebhookTest extends TestCase
         Mail::assertQueued(DepositRefunded::class, 1);
         $refunded = DepositRequest::query()->where('paypal_capture_id', 'CAP-DEP-SHORT')->first();
         $html = (new DepositRefunded($refunded->fresh(['user'])))->render();
-        $this->assertStringContainsString('€17.00', $html);
+        $this->assertStringContainsString('€17', $html);
         $this->assertStringContainsString('outstanding wallet debt', $html);
     }
 

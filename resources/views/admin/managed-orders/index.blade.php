@@ -12,10 +12,6 @@
         'actionIcon' => 'fa-plus',
     ])
 
-    @if(session('success'))
-        <div class="alert alert-success">{{ session('success') }}</div>
-    @endif
-
     <form method="GET" action="{{ route('admin.managed-orders.index') }}" class="d-flex flex-wrap gap-2 mb-3">
         <select name="status" class="form-select" style="max-width:16rem;">
             <option value="">All internal statuses</option>

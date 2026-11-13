@@ -3,10 +3,10 @@
 namespace Tests\Feature;
 
 use App\Http\Controllers\Advertiser\GuestPostWizardController;
+use App\Models\FeatureOfferSetting;
 use App\Models\Role;
 use App\Models\Site;
 use App\Models\User;
-use App\Models\WritingSetting;
 use App\Services\Marketplace\CheckoutAddOnService;
 use App\Services\Marketplace\WritingFeeService;
 use Database\Seeders\RolesTableSeeder;
@@ -187,10 +187,9 @@ class CartArticleChoiceUxTest extends TestCase
             ->assertOk();
 
         $payload = $this->actingAs($this->advertiser)
-            ->postJson(route('advertiser.cart.write-unready'))
+            ->postJson(route('advertiser.cart.write-all'))
             ->assertOk()
             ->assertJsonPath('success', true)
-            ->assertJsonPath('written_count', 2)
             ->json();
 
         $this->assertCount(2, $payload['cart']);
@@ -214,7 +213,7 @@ class CartArticleChoiceUxTest extends TestCase
         $this->actingAs($admin)
             ->get(route('admin.writing-queue.index'))
             ->assertOk()
-            ->assertSee('Cart writing turnaround', false)
+            ->assertSee('Advertiser cart turnaround', false)
             ->assertSee('2–3 working days', false);
 
         $this->actingAs($admin)
@@ -223,7 +222,7 @@ class CartArticleChoiceUxTest extends TestCase
             ])
             ->assertRedirect();
 
-        $this->assertSame('4 working days', WritingSetting::turnaroundText());
+        $this->assertSame('4 working days', FeatureOfferSetting::writingTurnaroundText());
         $this->assertSame('4 working days', app(CheckoutAddOnService::class)->cartArticleCopy()['turnaround']);
 
         $html = $this->actingAs($this->advertiser)

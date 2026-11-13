@@ -25,6 +25,8 @@ class MarketingNicheGroupAndImageFixTest extends TestCase
 
     private User $marketer;
 
+    private User $admin;
+
     private User $publisher;
 
     protected function setUp(): void
@@ -38,6 +40,7 @@ class MarketingNicheGroupAndImageFixTest extends TestCase
         Storage::fake('public');
 
         $marketingRole = Role::where('name', 'marketing')->firstOrFail();
+        $adminRole = Role::where('name', 'admin')->firstOrFail();
         $publisherRole = Role::where('name', 'publisher')->firstOrFail();
 
         $this->marketer = User::factory()->create([
@@ -45,6 +48,12 @@ class MarketingNicheGroupAndImageFixTest extends TestCase
             'active_role_id' => $marketingRole->id,
         ]);
         $this->marketer->roles()->attach($marketingRole->id);
+
+        $this->admin = User::factory()->create([
+            'email_verified_at' => now(),
+            'active_role_id' => $adminRole->id,
+        ]);
+        $this->admin->roles()->attach($adminRole->id);
 
         $this->publisher = User::factory()->create([
             'email_verified_at' => now(),
@@ -156,8 +165,8 @@ class MarketingNicheGroupAndImageFixTest extends TestCase
             'price' => 55,
         ]);
 
-        $this->actingAs($this->marketer)
-            ->post(route('marketing.bulk-site-requests.done', $bulk), [
+        $this->actingAs($this->admin)
+            ->post(route('admin.bulk-site-requests.done', $bulk), [
                 'items' => [
                     $item->id => [
                         'language' => 'en',
@@ -198,8 +207,8 @@ class MarketingNicheGroupAndImageFixTest extends TestCase
             'price' => 40,
         ]);
 
-        $html = $this->actingAs($this->marketer)
-            ->get(route('marketing.bulk-site-requests.show', $bulk))
+        $html = $this->actingAs($this->admin)
+            ->get(route('admin.bulk-site-requests.show', $bulk))
             ->assertOk()
             ->getContent();
 

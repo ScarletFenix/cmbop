@@ -20,19 +20,6 @@
         'actionIcon' => 'fa-arrow-left',
     ])
 
-    @if(session('success'))
-        <div class="alert alert-success">{{ session('success') }}</div>
-    @endif
-    @if($errors->any())
-        <div class="alert alert-danger">
-            <ul class="mb-0">
-                @foreach($errors->all() as $error)
-                    <li>{{ $error }}</li>
-                @endforeach
-            </ul>
-        </div>
-    @endif
-
     <div class="d-flex flex-wrap gap-2 mb-3">
         <span class="badge text-bg-light text-dark border">Order {{ $order->status }}</span>
         <span class="badge text-bg-light text-dark border">Payment {{ $order->payment_status }}</span>
@@ -129,7 +116,7 @@
                         <p class="mb-0 text-muted">Completed{{ $item->managedCompletedBy ? ' by '.$item->managedCompletedBy->name : '' }}. Publisher wallet was not credited for this managed placement.</p>
                     @else
                         <p class="small text-muted">Completing notifies the advertiser and closes the order. It does <strong>not</strong> credit the catalog publisher wallet.</p>
-                        <form method="POST" action="{{ route('admin.managed-orders.complete', $item) }}" onsubmit="return confirm('Complete this managed order without paying the publisher through the platform?');">
+                        <form method="POST" action="{{ route('admin.managed-orders.complete', $item) }}" data-slb-confirm="Complete this managed order without paying the publisher through the platform?" data-slb-confirm-title="Complete without publisher payout?" data-slb-confirm-danger="1">
                             @csrf
                             @if(!filled($item->live_url))
                                 <div class="mb-2">
@@ -224,10 +211,14 @@
                     input.value = '';
                     loadChat();
                 } else {
-                    alert((data && data.message) || 'Could not send message.');
+                    if (window.slbAlert) {
+                        slbAlert({ icon: 'error', title: (data && data.message) || 'Could not send message.' });
+                    }
                 }
             }).catch(function () {
-                alert('Could not send message.');
+                if (window.slbAlert) {
+                    slbAlert({ icon: 'error', title: 'Could not send message.' });
+                }
             });
         });
     }

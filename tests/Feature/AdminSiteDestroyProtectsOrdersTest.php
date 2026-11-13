@@ -342,8 +342,8 @@ class AdminSiteDestroyProtectsOrdersTest extends TestCase
     {
         $this->assertTrue(Route::has('admin.sites.archive'));
         $this->assertTrue(Route::has('admin.sites.unarchive'));
-        $this->assertFalse(Route::has('marketing.sites.archive'));
-        $this->assertFalse(Route::has('marketing.sites.unarchive'));
+        $this->assertTrue(Route::has('marketing.sites.archive'));
+        $this->assertTrue(Route::has('marketing.sites.unarchive'));
     }
 
     public function test_pending_site_without_orders_is_still_hard_deleted(): void

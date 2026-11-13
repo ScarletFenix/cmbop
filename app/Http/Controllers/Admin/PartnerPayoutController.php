@@ -13,6 +13,7 @@ use App\Services\Partners\PartnerApiKeyService;
 use App\Services\Partners\PartnerChannel;
 use App\Services\Partners\PartnerLedgerService;
 use App\Services\Partners\PartnerPayoutModeService;
+use App\Support\UserFacingError;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Crypt;
@@ -64,7 +65,7 @@ class PartnerPayoutController extends Controller
                 $this->modes->switchToHeld($partner, $request->user(), $data['reason']);
             }
         } catch (RuntimeException $e) {
-            return back()->with('error', $e->getMessage());
+            return back()->with('error', UserFacingError::message($e, 'Could not update payout mode.'));
         }
 
         return back()->with('success', 'Payout mode updated.');
@@ -79,7 +80,7 @@ class PartnerPayoutController extends Controller
         try {
             $issued = $this->keys->issue($partner, $data['name'], PartnerApiKeyService::SCOPES, $data['mode'], $request->user());
         } catch (RuntimeException $e) {
-            return back()->with('error', $e->getMessage());
+            return back()->with('error', UserFacingError::message($e, 'Could not issue that API key.'));
         }
         ActivityLogger::tryLog('partner.api_key.issued', 'Issued partner API key', $partner, [
             'prefix' => $issued['key']->prefix,

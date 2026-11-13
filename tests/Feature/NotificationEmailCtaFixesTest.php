@@ -211,7 +211,7 @@ class NotificationEmailCtaFixesTest extends TestCase
 
         $html = (new SiteStatusNotification($site, 'activated'))->render();
 
-        $this->assertStringContainsString('Dear Publisher', $html);
+        $this->assertStringContainsString('Hello', $html);
         $this->assertStringContainsString($this->site->site_name, $html);
     }
 }

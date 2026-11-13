@@ -464,7 +464,7 @@ class AdminLedgerPaymentsInvoicesCrashTest extends TestCase
             ->from(route('admin.invoices.index'))
             ->post(route('admin.invoices.generate'), ['order_id' => 999999])
             ->assertRedirect(route('admin.invoices.index'))
-            ->assertSessionHasErrors('order_id');
+            ->assertSessionHas('error', 'No order matches that number.');
     }
 
     public function test_invoice_generate_survives_missing_series_column(): void

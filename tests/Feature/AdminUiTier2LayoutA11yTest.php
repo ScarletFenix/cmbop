@@ -91,7 +91,7 @@ class AdminUiTier2LayoutA11yTest extends TestCase
     {
         $shell = file_get_contents(public_path('assets/css/app-shell.css'));
         $this->assertStringContainsString('.sticky-below-topbar', $shell);
-        $this->assertStringContainsString('calc(var(--shell-topbar-height) + 1rem)', $shell);
+        $this->assertStringContainsString('calc(var(--shell-topbar-offset) + 1rem)', $shell);
 
         foreach (['admin.promotions.banners.create', 'admin.promotions.announcements.create'] as $route) {
             $html = $this->actingAs($this->admin)

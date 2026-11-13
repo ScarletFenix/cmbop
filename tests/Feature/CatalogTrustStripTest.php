@@ -107,7 +107,9 @@ class CatalogTrustStripTest extends TestCase
         $this->assertStringNotContainsString('Awaiting first ratings', $html);
         $this->assertStringNotContainsString('No completed orders yet', $html);
         $this->assertStringNotContainsString('site-trust-compact__stars', $html);
-        $this->assertStringNotContainsString('5.0', $html);
+        // Whole-page "5.0" matches SVG path numbers (e.g. 15.08). Assert leftover
+        // rating_avg is not painted as a proven score.
+        $this->assertStringNotContainsString('5.0 out of 5', $html);
         $this->assertStringNotContainsString('1 rating', $html);
     }
 
@@ -152,7 +154,8 @@ class CatalogTrustStripTest extends TestCase
         $this->assertStringNotContainsString('No completed orders yet', $html);
         $this->assertStringNotContainsString('% completed', $html);
         $this->assertStringNotContainsString('site-trust-compact__stars', $html);
-        $this->assertStringNotContainsString('5.0', $html);
+        $this->assertStringNotContainsString('5.0 out of 5', $html);
+        $this->assertStringNotContainsString('1 rating', $html);
     }
 
     public function test_rated_site_shows_score_count_and_last_published(): void
