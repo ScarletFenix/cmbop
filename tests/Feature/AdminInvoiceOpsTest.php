@@ -326,7 +326,7 @@ class AdminInvoiceOpsTest extends TestCase
 
         $advertiser = $this->advertiser();
         $admin = $this->admin();
-        $order = $this->paidOrder($advertiser, 'pending');
+        $order = $this->paidOrder($advertiser);
         Invoice::query()->where('order_id', $order->id)->delete();
 
         $this->mock(BillingDocumentService::class, function ($mock) {
@@ -353,7 +353,17 @@ class AdminInvoiceOpsTest extends TestCase
         Invoice::query()->where('order_id', $order->id)->delete();
 
         $this->actingAs($admin)
+            ->from(route('admin.invoices.index'))
             ->post(route('admin.invoices.generate'), ['order_id' => $order->id])
+            ->assertRedirect(route('admin.invoices.index'))
+            ->assertSessionHas('warning', 'This order is not paid. Confirm to issue a tax invoice anyway.')
+            ->assertSessionHas('confirm_unpaid_order', (string) $order->id);
+
+        $this->actingAs($admin)
+            ->post(route('admin.invoices.generate'), [
+                'order_id' => $order->id,
+                'confirm' => 1,
+            ])
             ->assertRedirect()
             ->assertSessionHas('success')
             ->assertSessionHas('warning', 'Invoice issued for an unpaid order.');

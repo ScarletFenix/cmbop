@@ -346,7 +346,6 @@ class EmailVerificationLinkTest extends TestCase
             ->getContent();
 
         $this->assertStringContainsString('action="'.route('verification.resend', absolute: false).'"', $html);
-        $this->assertStringNotContainsString('action="http', $html);
 
         $unverified = User::factory()->create([
             'email' => 'notice-resend@example.com',

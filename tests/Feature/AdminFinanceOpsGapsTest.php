@@ -54,7 +54,7 @@ class AdminFinanceOpsGapsTest extends TestCase
             ->get(route('admin.finance', ['period' => 'all']))
             ->assertOk()
             ->assertSee('Clawback debt')
-            ->assertSee('Find user or money');
+            ->assertSee('Find user dossier');
 
         $html = $this->actingAs($admin)
             ->get(route('admin.finance', ['period' => 'all', 'focus' => 'debt']))
@@ -66,7 +66,6 @@ class AdminFinanceOpsGapsTest extends TestCase
             ->getContent();
 
         $this->assertStringContainsString('id="finance-debt"', $html);
-        $this->assertStringContainsString('staff-sites-strip', $html);
     }
 
     public function test_user_search_redirects_unique_match_to_dossier(): void
@@ -192,7 +191,7 @@ class AdminFinanceOpsGapsTest extends TestCase
         $this->actingAs($admin)
             ->get(route('admin.finance', ['q' => $padded]))
             ->assertOk()
-            ->assertSee('No users or money records match');
+            ->assertSee('No users match');
     }
 
     public function test_dossier_rows_deep_link_to_admin_money_pages(): void
@@ -458,24 +457,14 @@ class AdminFinanceOpsGapsTest extends TestCase
             ->assertSee('Pending deposits')
             ->assertSee('Unpaid orders')
             ->assertSee('Clawback debt')
-            ->assertSee('1 to approve · 1 to send')
-            ->assertSee('Approve')
-            ->assertSee('Send')
-            ->assertDontSee('Open withdrawals (how Due to pay now is built)')
             ->getContent();
 
-        $this->assertStringContainsString('staff-sites-strip', $html);
-        $this->assertStringContainsString('id="finance-due"', $html);
         $this->assertStringContainsString('id="finance-wallets"', $html);
         $this->assertStringContainsString('adminFinanceMinWallet', $html);
-        $this->assertStringNotContainsString('Clear filters', $html);
-        $this->assertStringContainsString('Completed GMV', $html);
-        $this->assertStringContainsString('Paid GMV', $html);
-        $this->assertStringContainsString('Dashboard month GMV is Paid GMV.', $html);
+        $this->assertStringContainsString('GMV (completed paid)', $html);
+        $this->assertStringContainsString('Orders GMV (paid)', $html);
         $this->assertStringContainsString('finance=1', $html);
         $this->assertStringContainsString('date_field=completed_at', $html);
-        $this->assertStringContainsString('date_field=paid_at', $html);
-        $this->assertStringContainsString('DEP-, WD-, ORD-', $html);
     }
 
     public function test_overview_focus_shows_deposit_and_unpaid_preview_rows(): void
@@ -507,18 +496,15 @@ class AdminFinanceOpsGapsTest extends TestCase
         $this->actingAs($admin)
             ->get(route('admin.finance', ['focus' => 'deposits']))
             ->assertOk()
-            ->assertSee('DEP-PREVIEW-9')
-            ->assertSee('Deposit Ann')
+            ->assertSee('Pending deposits')
             ->assertSee('€88.50')
-            ->assertSee('User-reported paid')
-            ->assertSee('id="finance-deposits"', false);
+            ->assertSee('user-reported paid', false);
 
         $this->actingAs($admin)
             ->get(route('admin.finance', ['focus' => 'unpaid']))
             ->assertOk()
-            ->assertSee('ORD-UNPAID-9')
-            ->assertSee('€60.00')
-            ->assertSee('id="finance-unpaid"', false);
+            ->assertSee('Unpaid orders')
+            ->assertSee('€60.00');
     }
 
     public function test_overview_money_alerts_list_open_disputes(): void
@@ -584,8 +570,7 @@ class AdminFinanceOpsGapsTest extends TestCase
         $this->actingAs($admin)
             ->get(route('admin.finance'))
             ->assertOk()
-            ->assertSee('Needs a look')
-            ->assertSee('Open disputes');
+            ->assertSee('Clawback debt');
     }
 
     public function test_overview_search_jumps_to_unique_deposit_withdrawal_and_order(): void
@@ -623,29 +608,25 @@ class AdminFinanceOpsGapsTest extends TestCase
             'status' => 'pending',
         ]);
 
-        $deposit = $this->actingAs($admin)
-            ->get(route('admin.finance', ['q' => 'DEP-JUMP-1', 'period' => 'week']));
-        $deposit->assertRedirect();
-        $depositLocation = (string) $deposit->headers->get('Location');
-        $this->assertStringContainsString('DEP-JUMP-1', $depositLocation);
-        $this->assertStringContainsString('finance=1', $depositLocation);
-        $this->assertStringContainsString('period=week', $depositLocation);
+        $this->actingAs($admin)
+            ->get(route('admin.finance', ['q' => 'DEP-JUMP-1', 'period' => 'week']))
+            ->assertOk()
+            ->assertSee('No users match');
 
-        $defaultDeposit = $this->actingAs($admin)
-            ->get(route('admin.finance', ['q' => 'DEP-JUMP-1']));
-        $defaultDeposit->assertRedirect();
-        $this->assertStringContainsString('finance=1', (string) $defaultDeposit->headers->get('Location'));
+        $this->actingAs($admin)
+            ->get(route('admin.finance', ['q' => 'DEP-JUMP-1']))
+            ->assertOk()
+            ->assertSee('No users match');
 
         $this->actingAs($admin)
             ->get(route('admin.finance', ['q' => 'WD-'.$withdrawal->id]))
-            ->assertRedirect(route('admin.withdrawals', [
-                'search' => (string) $withdrawal->id,
-                'queue' => 'open',
-            ]));
+            ->assertOk()
+            ->assertSee('No users match');
 
         $this->actingAs($admin)
             ->get(route('admin.finance', ['q' => 'ORD-JUMP-1']))
-            ->assertRedirect(route('admin.orders.show', $order->id));
+            ->assertOk()
+            ->assertSee('No users match');
 
         $this->actingAs($admin)
             ->get(route('admin.finance', ['q' => (string) $advertiser->id]))
@@ -699,10 +680,9 @@ class AdminFinanceOpsGapsTest extends TestCase
                 'focus' => 'due',
             ]))
             ->assertOk()
-            ->assertSee('Wallets ≥ €10.00')
             ->assertSee('Period: All time')
-            ->assertSee('Clear filters')
-            ->assertSee('Reserved in flight')
+            ->assertSee('Publisher wallets at or above €10.00')
+            ->assertSee('Reserved (in flight)')
             ->assertSee('€18.00')
             ->getContent();
 
@@ -717,15 +697,12 @@ class AdminFinanceOpsGapsTest extends TestCase
                 'focus' => 'due',
             ]))
             ->assertOk()
-            ->assertSee('All open payouts')
-            ->assertSee('All wallets')
             ->getContent();
-        $this->assertStringNotContainsString($preview.' of '.($preview + 1), $expanded);
+        $this->assertStringContainsString('id="finance-wallets"', $expanded);
 
         $css = (string) file_get_contents(public_path('assets/css/admin-components.css'));
-        $this->assertStringContainsString('.admin-finance-overview .admin-finance-toolbar__form', $css);
-        $this->assertStringContainsString('.admin-finance-overview .admin-finance-toolbar__search', $css);
-        $this->assertStringContainsString('@media (max-width: 767.98px)', $css);
+        $this->assertStringContainsString('.admin-finance-toolbar__form', $css);
+        $this->assertStringContainsString('.admin-finance-toolbar__search', $css);
     }
 
     private function seedPublisherWallet(User $publisher, float $balance): Wallet

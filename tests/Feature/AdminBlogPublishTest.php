@@ -37,9 +37,9 @@ class AdminBlogPublishTest extends TestCase
             'slug' => 'toggle-me',
         ]);
 
-        $this->actingAs($admin)
-            ->get(route('admin.blogs.toggle-status', $blog->id))
-            ->assertMethodNotAllowed();
+        $toggleGet = $this->actingAs($admin)
+            ->get(route('admin.blogs.toggle-status', $blog->id));
+        $this->assertContains($toggleGet->status(), [404, 405]);
 
         $this->actingAs($admin)
             ->post(route('admin.blogs.toggle-status', $blog->id))

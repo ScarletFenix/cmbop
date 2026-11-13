@@ -5,10 +5,13 @@ namespace Tests\Unit;
 use App\Models\Site;
 use App\Services\CartPricingService;
 use App\Services\PlatformFeeService;
+use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
 class CartPricingServiceTest extends TestCase
 {
+    use RefreshDatabase;
+
     private CartPricingService $pricing;
 
     protected function setUp(): void

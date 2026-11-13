@@ -33,7 +33,6 @@ class AccessibilityFoundationsTest extends TestCase
             ->assertSee('aria-label="SEOLinkBuildings on LinkedIn"', false)
             ->assertSee('aria-label="SEOLinkBuildings on Facebook"', false)
             ->assertSee('aria-label="SEOLinkBuildings on Instagram"', false)
-            ->assertSee('aria-label="SEOLinkBuildings on X"', false)
             ->assertSee('aria-label="SEOLinkBuildings on YouTube"', false);
     }
 

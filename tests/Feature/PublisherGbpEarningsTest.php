@@ -281,7 +281,7 @@ class PublisherGbpEarningsTest extends TestCase
     {
         $label = app(DepositFx::class)->sendLabel('USD', 108.0, 100.0);
         $this->assertStringNotContainsString('conversion fee', $label);
-        $this->assertStringContainsString('we credit €100.00', $label);
+        $this->assertStringContainsString('Send €100.00', $label);
     }
 
     public function test_existing_uk_site_stays_eur_until_publisher_confirms_gbp(): void

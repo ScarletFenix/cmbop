@@ -205,6 +205,8 @@ class AdminLeftoverErrorHardeningTest extends TestCase
         $admin = $this->userWithRole('admin');
 
         $this->mock(DashboardMetricsService::class, function ($mock) {
+            $mock->shouldReceive('includeTestData')->andReturnSelf();
+            $mock->shouldReceive('queueCounts')->andReturn([]);
             $mock->shouldReceive('statistics')
                 ->once()
                 ->andThrow(new \RuntimeException('SQLSTATE[HY000]: metrics boom'));

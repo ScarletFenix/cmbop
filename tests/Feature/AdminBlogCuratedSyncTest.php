@@ -84,8 +84,12 @@ class AdminBlogCuratedSyncTest extends TestCase
             ->get(route('admin.blogs.index'))
             ->assertOk()
             ->assertSee('Sync curated SEO blogs', false)
-            ->assertSee('Gastbeiträge kaufen', false)
-            ->assertSee('Wallet, Escrow', false);
+            ->assertSee('Gastbeiträge kaufen', false);
+
+        $this->assertTrue(
+            Blog::query()->where('title', 'like', 'Wallet, Escrow%')->exists(),
+            'Curated wallet/escrow post should be stored even if it is not on page 1.'
+        );
     }
 
     public function test_blog_upsert_curated_command_inserts_posts(): void

@@ -194,7 +194,7 @@ class SavedSitesPageTest extends TestCase
 
         $this->assertNotFalse($scheduledPos);
         $this->assertNotFalse($savedPos);
-        $this->assertLessThan($savedPos, $scheduledPos, 'Saved Sites should appear after Scheduled in the sidebar');
+        $this->assertLessThan($scheduledPos, $savedPos, 'Saved Sites is in Buy, before Orders / Scheduled');
     }
 
     public function test_hide_mode_masks_saved_site_names_and_hosts(): void

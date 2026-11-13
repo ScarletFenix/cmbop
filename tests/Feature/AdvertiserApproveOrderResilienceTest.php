@@ -145,6 +145,11 @@ class AdvertiserApproveOrderResilienceTest extends TestCase
         });
 
         Schema::table('order_items', function ($table) {
+            try {
+                $table->dropIndex('order_items_site_id_completed_at_index');
+            } catch (\Throwable) {
+                // Index name differs by driver, or it was already dropped.
+            }
             if (Schema::hasColumn('order_items', 'publisher_status')) {
                 $table->dropColumn('publisher_status');
             }

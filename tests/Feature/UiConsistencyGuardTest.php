@@ -88,10 +88,14 @@ class UiConsistencyGuardTest extends TestCase
             if (! $file->isFile() || ! str_ends_with($file->getFilename(), '.blade.php')) {
                 continue;
             }
+            $relative = str_replace(resource_path('views').'/', '', $file->getPathname());
+            if (str_starts_with($relative, 'emails/')) {
+                continue;
+            }
             foreach (file($file->getPathname()) as $index => $line) {
                 // Only flag elements that opt into the button system and then override it.
                 if (preg_match('/class="[^"]*\bbtn\b[^"]*"[^>]*style="[^"]*background/', $line)) {
-                    $offenders[] = str_replace(resource_path('views').'/', '', $file->getPathname()).':'.($index + 1);
+                    $offenders[] = $relative.':'.($index + 1);
                 }
             }
         }

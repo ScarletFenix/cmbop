@@ -69,7 +69,7 @@ class AdminPromotionsSchemaDriftResilienceTest extends TestCase
         $this->actingAs($this->admin)
             ->get(route('admin.promotions.index'))
             ->assertOk()
-            ->assertSee('Enabled', false)
+            ->assertSee('Disabled', false)
             ->assertDontSee('>Unknown<', false)
             ->assertDontSee('Promotions storage is incomplete', false);
     }
@@ -101,9 +101,9 @@ class AdminPromotionsSchemaDriftResilienceTest extends TestCase
         $this->actingAs($this->admin)
             ->get(route('admin.promotions.index'))
             ->assertOk()
-            ->assertSee('Enabled', false)
+            ->assertSee('Disabled', false)
             ->assertDontSee('>Unknown<', false)
-            ->assertSee('Disable', false)
+            ->assertSee('Enable', false)
             ->assertSee('0 claims this week', false)
             ->assertDontSee('Something went wrong');
 

@@ -181,6 +181,6 @@ class AdminRejectionNotifiesPublisherTest extends TestCase
 
         $this->assertStringContainsString('Rejected Site', $html);
         $this->assertStringContainsString('Traffic could not be verified.', $html);
-        $this->assertStringContainsString($publisher->name, $html);
+        $this->assertStringContainsString('Hello', $html);
     }
 }

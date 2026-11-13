@@ -202,7 +202,11 @@ class MarketplaceAddOnsTest extends TestCase
 
         $addons = app(CheckoutAddOnService::class);
         $publisher = $addons->decorateCartLine(['id' => 21, 'content_source' => WritingFeeService::SOURCE_WRITTEN], $publisherSite);
-        $slb = $addons->decorateCartLine(['id' => 22, 'content_source' => WritingFeeService::SOURCE_WRITTEN], $slbSite);
+        $slb = $addons->decorateCartLine([
+            'id' => 22,
+            'price' => 100,
+            'content_source' => WritingFeeService::SOURCE_WRITTEN,
+        ], $slbSite);
 
         $this->assertSame(WritingFeeService::SOURCE_PUBLISHER, $publisher['content_source']);
         $this->assertEquals(40.0, $publisher['writing_fee']);

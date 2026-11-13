@@ -206,7 +206,7 @@ class GuestPostWizardTest extends TestCase
             ->assertSee('Choose how you\'ll get the article', false)
             ->assertSee('Have the article written', false)
             ->assertSee('With writing:', false)
-            ->assertSee('Choose an option', false)
+            ->assertSee('Choose an article option', false)
             ->assertSee('Choose an article option above to continue', false)
             ->assertSee('We write → you approve → publisher publishes', false)
             ->assertDontSee('Needs article', false)

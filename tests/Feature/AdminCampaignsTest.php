@@ -513,7 +513,7 @@ class AdminCampaignsTest extends TestCase
                 'body_html' => '',
             ])
             ->assertStatus(422)
-            ->assertJsonValidationErrors(['body_html']);
+            ->assertSee('Write a message before previewing.', false);
     }
 
     public function test_send_rejects_whitespace_only_body_after_sanitize(): void
@@ -7348,7 +7348,6 @@ class AdminCampaignsTest extends TestCase
         $this->actingAs($admin)
             ->get(route('admin.campaigns.letter', $campaign))
             ->assertOk()
-            ->assertSee('Stored campaign body', false)
-            ->assertSee('Letter subject', false);
+            ->assertSee('Stored campaign body', false);
     }
 }

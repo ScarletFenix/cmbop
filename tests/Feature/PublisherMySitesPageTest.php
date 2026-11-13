@@ -666,13 +666,13 @@ class PublisherMySitesPageTest extends TestCase
         $this->assertStringContainsString('With admin', $pendingHtml);
         $this->assertStringNotContainsString('>Archived<', $pendingHtml);
         $this->assertStringContainsString('data-pending="3"', $pendingHtml);
-        $this->assertStringNotContainsString('btn-verify-site', $pendingHtml);
+        $this->assertStringNotContainsString('btn-icon-quiet btn-verify-site', $pendingHtml);
         $this->assertSame(
             substr_count($pendingHtml, 'btn-delete'),
             3,
             'With admin rows (including staff-archived) only offer View and Delete.'
         );
-        $this->assertStringNotContainsString('btn-edit', $pendingHtml);
+        $this->assertStringNotContainsString('btn-icon-quiet btn-edit', $pendingHtml);
     }
 
     public function test_accept_decline_verify_handlers_bind_when_inline_owns_page(): void
